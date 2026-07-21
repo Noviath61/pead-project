@@ -133,6 +133,21 @@ earnings-specific at all; it's just this stock sample's general tendency to drif
 the study period, and random non-earnings days show it just as much (usually more). Without
 this check, that +0.58% result would have been easy to mistakenly report as evidence for PEAD.
 
+**Market model (proper beta-adjusted abnormal returns)**: the "abnormal drift" used everywhere
+above assumes every stock moves 1-for-1 with the market (a simple market-adjusted return).
+The academic standard (the market model, Brown & Warner 1985) is more precise: estimate each
+stock's actual beta from a clean 250-day window *before* the event (with a 30-day buffer so
+the event itself can never leak into the estimate — the same lookahead-bias discipline used
+throughout this project), then measure abnormal return against that stock-specific
+expectation instead of a flat market assumption. Average beta across this sample is **1.13**
+(median 1.09) — these are higher-than-market-sensitivity stocks, which means the simpler
+method was silently crediting some of that generic extra sensitivity to "abnormal" earnings
+movement. Once properly beta-adjusted, the post-Day-0 continuation drift **almost entirely
+disappears**: mean CAR change from Day 0 to Day +20 is -0.065% (t=-0.38, p=0.701) — not
+remotely significant, and the curve is flat-to-slightly-declining after the reaction rather
+than climbing. This is a cleaner, more theoretically correct confirmation of the same
+conclusion the placebo check already reached from a different angle.
+
 **Multiple comparison correction**: applied separately to the 8 quintile/tier significance
 tests and the 6 cluster-robust regression tests. Nothing survives correction in either family,
 and this same pattern (one test looks marginally significant in isolation, none survive
@@ -203,6 +218,10 @@ result from a false positive.
 - Walk-forward (time-series) cross-validation for the classifier, catching that a naive random
   80/20 split was likely giving a mild lookahead-bias-inflated result — the same principle
   discussed early in this project for avoiding it in trading-strategy backtests
+- A proper market-model (beta-adjusted) event study, not just a flat market-adjustment —
+  betas estimated from a pre-event window with a deliberate gap before the event itself, so
+  the event's own reaction can never leak into the estimate, and this more rigorous method
+  produced an even cleaner null result than the simpler one
 - A public, no-database-required dashboard deployment path (static snapshot fallback),
   verified by deliberately breaking the DB connection and confirming the fallback triggers
 - Finding and fixing a real bug in the project's own test suite: a fixture that assumed a
