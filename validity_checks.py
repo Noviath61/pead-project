@@ -23,8 +23,10 @@ print()
 sub = df.dropna(subset=["drift_10d_pct", "spy_drift_10d_pct"])
 r, p = stats.pearsonr(sub["drift_10d_pct"], sub["spy_drift_10d_pct"])
 print(f"n={len(sub)}  Pearson r={r:.3f}  p-value={p:.2e}")
-print("PASS: pipeline detects the expected market-beta relationship." if p < 0.05 and r > 0
-      else "WARNING: expected relationship not detected - investigate the pipeline before trusting the null PEAD result.")
+if p < 0.05 and r > 0:
+    print("PASS: pipeline detects the expected market-beta relationship.")
+else:
+    print("WARNING: expected relationship not detected - investigate the pipeline before trusting results.")
 
 print()
 print("=== Multiple comparison correction across all significance tests run ===")

@@ -44,8 +44,10 @@ st.caption(
 )
 
 st.sidebar.header("Filters")
-tiers = st.sidebar.multiselect("Tier", options=sorted(df["tier"].unique()), default=sorted(df["tier"].unique()))
-sectors = st.sidebar.multiselect("Sector", options=sorted(df["sector"].unique()), default=sorted(df["sector"].unique()))
+tier_options = sorted(df["tier"].unique())
+sector_options = sorted(df["sector"].unique())
+tiers = st.sidebar.multiselect("Tier", options=tier_options, default=tier_options)
+sectors = st.sidebar.multiselect("Sector", options=sector_options, default=sector_options)
 
 filtered = df[df["tier"].isin(tiers) & df["sector"].isin(sectors)].dropna(
     subset=["surprise_percentage", "abnormal_drift_10d_pct"]
@@ -81,16 +83,27 @@ with left:
         labels=["1: Big miss", "2: Miss", "3: Meet", "4: Beat", "5: Big beat"],
         duplicates="drop",
     )
-    bucket_summary = quintiled.groupby("surprise_quintile", observed=True)["abnormal_drift_10d_pct"].mean().reset_index()
-    fig = px.bar(bucket_summary, x="surprise_quintile", y="abnormal_drift_10d_pct",
-                 labels={"abnormal_drift_10d_pct": "Avg abnormal drift (10d, %)", "surprise_quintile": "Surprise bucket"})
+    bucket_summary = (
+        quintiled.groupby("surprise_quintile", observed=True)["abnormal_drift_10d_pct"]
+        .mean().reset_index()
+    )
+    bucket_labels = {
+        "abnormal_drift_10d_pct": "Avg abnormal drift (10d, %)",
+        "surprise_quintile": "Surprise bucket",
+    }
+    fig = px.bar(bucket_summary, x="surprise_quintile", y="abnormal_drift_10d_pct", labels=bucket_labels)
     st.plotly_chart(fig, use_container_width=True)
 
 with right:
     st.subheader("Surprise size vs. abnormal drift")
-    fig2 = px.scatter(filtered, x="surprise_percentage", y="abnormal_drift_10d_pct", color="tier",
-                       hover_data=["symbol", "reported_date"],
-                       labels={"surprise_percentage": "Earnings surprise (%)", "abnormal_drift_10d_pct": "Abnormal drift (10d, %)"})
+    scatter_labels = {
+        "surprise_percentage": "Earnings surprise (%)",
+        "abnormal_drift_10d_pct": "Abnormal drift (10d, %)",
+    }
+    fig2 = px.scatter(
+        filtered, x="surprise_percentage", y="abnormal_drift_10d_pct", color="tier",
+        hover_data=["symbol", "reported_date"], labels=scatter_labels,
+    )
     st.plotly_chart(fig2, use_container_width=True)
 
 st.divider()
@@ -104,8 +117,10 @@ st.caption(
 )
 try:
     car_overall = pd.read_csv("snapshot/event_study_overall.csv")
-    fig3 = px.line(car_overall, x="offset", y="car_pct",
-                    labels={"offset": "Trading days relative to Day 0", "car_pct": "Cumulative abnormal return (%)"})
+    fig3 = px.line(
+        car_overall, x="offset", y="car_pct",
+        labels={"offset": "Trading days relative to Day 0", "car_pct": "Cumulative abnormal return (%)"},
+    )
     fig3.add_vline(x=0, line_dash="dash", line_color="gray", annotation_text="Day 0 (earnings reaction)")
     st.plotly_chart(fig3, use_container_width=True)
 except FileNotFoundError:

@@ -19,7 +19,9 @@ DB_URL = (
 )
 engine = create_engine(DB_URL)
 
-NUMERIC_FEATURES = ["surprise_percentage", "pre_earnings_momentum_pct", "volume_spike_ratio", "volatility_change_ratio"]
+NUMERIC_FEATURES = [
+    "surprise_percentage", "pre_earnings_momentum_pct", "volume_spike_ratio", "volatility_change_ratio",
+]
 CATEGORICAL_FEATURES = ["tier", "sector"]
 FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 

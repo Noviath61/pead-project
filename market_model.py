@@ -1,5 +1,4 @@
 import os
-import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -82,10 +81,11 @@ for event_id, ev in events.iterrows():
         })
 
 mm_df = pd.DataFrame(records)
-print(f"Events with a usable pre-event estimation window: "
-      f"{mm_df['event_id'].nunique()} (skipped {skipped_no_estimation_window} - too close to start of price history)")
-print(f"Beta distribution across events: mean={mm_df.groupby('event_id')['beta'].first().mean():.2f}  "
-      f"median={mm_df.groupby('event_id')['beta'].first().median():.2f}")
+first_beta_per_event = mm_df.groupby("event_id")["beta"].first()
+print(f"Events with a usable pre-event estimation window: {mm_df['event_id'].nunique()} "
+      f"(skipped {skipped_no_estimation_window} - too close to start of price history)")
+print(f"Beta distribution across events: mean={first_beta_per_event.mean():.2f}  "
+      f"median={first_beta_per_event.median():.2f}")
 print()
 
 print("=== Market-model vs. simple market-adjusted CAR (all tiers combined) ===")
