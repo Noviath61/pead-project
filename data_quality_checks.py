@@ -48,8 +48,13 @@ CHECKS = [
         ) unmapped
     """, "fail"),
     ("extreme earnings surprises (>500% magnitude) flagged for review", """
-        SELECT count(*) FROM earnings_events WHERE abs(surprise_percentage) > 500
+        SELECT count(*) FROM earnings_events
+        WHERE surprise_percentage != 'NaN' AND abs(surprise_percentage) > 500
     """, "warn"),
+    ("no literal NaN values in surprise_percentage (Postgres NUMERIC allows this, and it "
+     "sorts as larger than every real value, which silently corrupts ORDER BY)", """
+        SELECT count(*) FROM earnings_events WHERE surprise_percentage = 'NaN'
+    """, "fail"),
 ]
 
 failures = 0

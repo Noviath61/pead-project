@@ -1,4 +1,6 @@
 import time
+
+import pandas as pd
 import yfinance as yf
 from ingest import engine, UPSERT_EARNINGS, UPSERT_PRICE, already_loaded, PRICE_START, PRICE_END
 
@@ -20,15 +22,31 @@ def load_earnings_yf(symbol: str) -> None:
     n = 0
     with engine.begin() as conn:
         for reported_date, row in earnings.iterrows():
+            reported_eps = float(row["Reported EPS"])
+            estimated_eps = float(row["EPS Estimate"])
+            surprise = reported_eps - estimated_eps
+            surprise_pct = row["Surprise(%)"]
+
+            # yfinance's own Surprise(%) is occasionally NaN specifically when reported
+            # exactly equals estimated (surprise=0), even though estimated_eps is nonzero
+            # and the percentage should just be 0.0 - recompute it ourselves in that case,
+            # using the same abs(estimate)-denominator convention yfinance's own non-NaN
+            # values already follow (confirmed by cross-checking against known-good rows),
+            # so it stays consistent rather than just falling back to a bare 0.
+            if pd.isna(surprise_pct):
+                surprise_pct = (surprise / abs(estimated_eps) * 100) if estimated_eps != 0 else None
+            else:
+                surprise_pct = float(surprise_pct)
+
             conn.execute(UPSERT_EARNINGS, {
                 "symbol": symbol,
                 "fiscal_date_ending": None,
                 "reported_date": reported_date.date(),
                 "report_time": "post-market",
-                "reported_eps": float(row["Reported EPS"]),
-                "estimated_eps": float(row["EPS Estimate"]),
-                "surprise": float(row["Reported EPS"]) - float(row["EPS Estimate"]),
-                "surprise_percentage": float(row["Surprise(%)"]),
+                "reported_eps": reported_eps,
+                "estimated_eps": estimated_eps,
+                "surprise": surprise,
+                "surprise_percentage": surprise_pct,
                 "source": "yfinance",
             })
             n += 1
