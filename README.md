@@ -8,8 +8,9 @@ and the research also says it should be strongest in small, under-covered stocks
 in mega-caps everyone already watches. I wanted to actually test that myself on real data
 instead of just taking it on faith.
 
-**Quick summary:** tested on 2,953 earnings events across 60 stocks, using six independent
-statistical methods. No significant effect anywhere, and the null result held up (got stronger,
+**Quick summary:** tested on 2,953 earnings events across 60 stocks, using a dozen independent
+statistical methods, from simple bucketing up to a full Fama-French 3-factor model. No
+significant effect anywhere, and the null result held up (got stronger,
 actually) as the sample grew from 807 to 2,953 events. Along the way I caught two real bugs:
 one where my own test suite quietly deleted real production data, and one where an
 unwinsorized regression produced a false-positive result that a placebo check exposed.
@@ -33,7 +34,10 @@ for over 24 hours across two calendar days, well past its advertised reset.
 Daily prices come from Financial Modeling Prep for large-caps and yfinance for mid/small-caps
 (FMP's free tier only whitelists a small set of large-cap symbols). SPY is the benchmark used
 to compute abnormal drift: a stock's raw move minus the S&P 500's move over the same window,
-which isolates the earnings-specific reaction from whatever the broad market was doing.
+which isolates the earnings-specific reaction from whatever the broad market was doing. For
+the market model and Fama-French sections below, daily market, size, and value factor returns
+come from Ken French's public data library, the same source used in real academic finance
+research.
 
 The universe is 60 stocks across three market-cap tiers, 20 large/20 mid/20 small, spread
 across Tech, Financials, Healthcare, Consumer, Defense, and Industrials. Price history goes
@@ -57,12 +61,15 @@ flowchart LR
     AV[Alpha Vantage] --> DB[(Postgres)]
     YF[yfinance] --> DB
     FMP[Financial Modeling Prep] --> DB
+    FF[Ken French data library] --> DB
     DB --> VIEW[earnings_drift SQL view]
-    VIEW --> STATS[Stats: quintiles, cluster-robust\nregression, market model, power]
+    VIEW --> STATS[Stats: quintiles, cluster-robust\nregression, power analysis]
+    VIEW --> FACTORS[Market model + Fama-French 3-factor]
     VIEW --> ML[Classifier: walk-forward CV]
     VIEW --> DASH[Streamlit dashboard]
     VIEW --> NB[analysis.ipynb]
     STATS --> README[This README]
+    FACTORS --> README
     ML --> README
 ```
 
@@ -165,6 +172,16 @@ movement. Beta-adjusted, the post-Day-0 drift almost entirely disappears: mean C
 Day 0 to Day +20 is -0.065% (p=0.701). A cleaner confirmation of what the placebo check
 already found.
 
+### Fama-French 3-factor model
+
+The market model only controls for beta. The actual next step in the academic literature
+(Fama & French 1993) also controls for size (SMB) and value (HML), using free daily factor
+data pulled directly from Ken French's public data library, the same source real asset
+pricing research uses. Same pre-event estimation window and 30-day gap as the market model,
+just three factors instead of one. Result: CAR is +0.462% at Day 0, and actually declines to
++0.228% by Day +20 rather than climbing. The formal continuation test is not significant
+(mean -0.234%, p=0.139). The most sophisticated model tested here agrees with everything else.
+
 ### Multiple comparison correction
 
 Applied separately to the 8 quintile/tier tests and the 6 cluster-robust regressions. Nothing
@@ -199,10 +216,11 @@ statistically significant to begin with.
 
 ## Interpretation
 
-No significant relationship between surprise size and abnormal drift, in any tier, across six
-independent methods. The coverage hypothesis didn't hold up either: every tier stayed
-indistinguishable from zero, and quadrupling the sample size converged estimates closer to
-zero, not further. That's the signature of a genuinely absent effect, not an underpowered test.
+No significant relationship between surprise size and abnormal drift, in any tier, across
+every independent method tried here. The coverage hypothesis didn't hold up either: every
+tier stayed indistinguishable from zero, and quadrupling the sample size converged estimates
+closer to zero, not further. That's the signature of a genuinely absent effect, not an
+underpowered test.
 
 The placebo check is the strongest single piece of evidence here. It shows a result that looks
 statistically significant on its own can be fully explained by general sample drift that has
@@ -223,8 +241,10 @@ that existed back to 2006.
 - Mid/small-cap Day-0 timing defaults to "post-market" rather than a confirmed report time
 - A handful of originally-targeted small-cap tickers got dropped for lack of historical data
   density, itself a small sign that lower-coverage stocks have thinner historical records
-- The market-model beta estimate needs a clean ~280-day window; 96 of 2,953 events don't have
-  one and are excluded from just that analysis, though included everywhere else
+- The market-model and Fama-French estimates both need a clean ~280-day window; 96 of 2,953
+  events don't have one and are excluded from just those two analyses, though included
+  everywhere else. Ken French's factor data also currently ends in May 2026, about two months
+  before this project's price data, so the most recent events lose Fama-French coverage first
 - Each family of tests was corrected for multiple comparisons within itself; a maximally strict
   version would correct across all families run over the project's lifetime jointly. Since
   every family already came back null, that wouldn't change the conclusion, but it's worth
@@ -244,8 +264,10 @@ cross-validation instead of a leaky random split, Benjamini-Hochberg correction 
 test families (tier, sector, and cluster-robust), an event-study CAR with a 100-run placebo
 control that caught a result that looked real but wasn't, a naive trading strategy priced
 against realistic transaction costs to separate statistical from economic significance, a
-survivorship-bias check quantifying why the sample drifts upward even on random days, and a
-formal power analysis showing the null result isn't just an underpowered test.
+survivorship-bias check quantifying why the sample drifts upward even on random days, a
+formal power analysis showing the null result isn't just an underpowered test, and a
+Fama-French 3-factor model using real factor data pulled from Ken French's public library,
+the same technique used in actual academic asset-pricing research.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
@@ -283,6 +305,8 @@ python validity_checks.py                 # pipeline sanity check + multiple com
 python event_study.py                     # cumulative abnormal return event study + placebo check
 python export_charts.py                   # regenerate the README's chart images (needs event_study.py first)
 python market_model.py                    # beta-adjusted market-model event study
+python load_ff_factors.py                 # download and load Fama-French daily factors
+python fama_french_model.py               # 3-factor abnormal returns
 python sector_analysis.py                 # coverage hypothesis test sliced by sector
 python signal_analysis.py                 # volume spike and volatility change as predictors
 python economic_significance.py           # naive strategy priced against trading costs

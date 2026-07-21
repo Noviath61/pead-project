@@ -299,7 +299,21 @@ remotely significant, and the curve actually declines slightly instead of climbi
 """)
 
 md("""\
-## 7. A few more angles
+## 7. Fama-French 3-factor model
+
+The market model only controls for beta. The real next step (Fama & French 1993) also
+controls for size (SMB) and value (HML), using free daily factor data pulled straight from
+Ken French's public data library, the same source used in actual academic asset-pricing
+research. Same pre-event window and 30-day gap as the market model, just three factors
+instead of one. See `load_ff_factors.py` and `fama_french_model.py` for the implementation.
+
+Result: CAR is +0.462% at Day 0 and actually declines to +0.228% by Day +20 rather than
+climbing. The formal continuation test isn't significant either (mean -0.234%, p=0.139).
+Even the most sophisticated model I tried agrees with everything else here.
+""")
+
+md("""\
+## 8. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -329,11 +343,12 @@ md("""\
 No statistically significant relationship between earnings surprise size and abnormal
 post-earnings drift, in any tier, across every angle I tried: bucketed significance
 testing, cluster-robust regression, a walk-forward-validated classifier, a market-beta
-validity check, an event-study CAR with a 100-run placebo comparison, a proper
-beta-adjusted market model, a sector-level cut, alternate signals, and economic
-significance. The coverage hypothesis didn't hold up either. Every tier stayed
-statistically indistinguishable from zero, and the estimates converged closer to
-zero, not further from it, as the sample grew from 807 to 2,953 events.
+validity check, an event-study CAR with a 100-run placebo comparison, a beta-adjusted
+market model, a full Fama-French 3-factor model, a sector-level cut, alternate signals,
+economic significance, survivorship bias, and a formal power analysis. The coverage
+hypothesis didn't hold up either. Every tier stayed statistically indistinguishable from
+zero, and the estimates converged closer to zero, not further from it, as the sample grew
+from 807 to 2,953 events.
 
 Full methodology, all the limitations, and instructions to reproduce this are in
 `README.md`.
