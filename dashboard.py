@@ -1,0 +1,92 @@
+import os
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from scipy import stats
+
+load_dotenv()
+
+st.set_page_config(page_title="PEAD Analysis", layout="wide")
+
+
+@st.cache_data
+def load_data():
+    db_url = (
+        f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
+        f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
+    )
+    engine = create_engine(db_url)
+    return pd.read_sql("SELECT * FROM earnings_drift", engine)
+
+
+df = load_data()
+
+st.title("Post-Earnings Announcement Drift (PEAD) Analysis")
+st.caption(
+    "Does an earnings surprise predict abnormal (market-adjusted) stock drift in the "
+    "days after? Tested across large/mid/small-cap tiers to check whether the effect "
+    "is stronger in less-covered stocks, as academic literature suggests."
+)
+
+st.sidebar.header("Filters")
+tiers = st.sidebar.multiselect("Tier", options=sorted(df["tier"].unique()), default=sorted(df["tier"].unique()))
+sectors = st.sidebar.multiselect("Sector", options=sorted(df["sector"].unique()), default=sorted(df["sector"].unique()))
+
+filtered = df[df["tier"].isin(tiers) & df["sector"].isin(sectors)].dropna(
+    subset=["surprise_percentage", "abnormal_drift_10d_pct"]
+)
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Earnings events", len(filtered))
+col2.metric("Tickers", filtered["symbol"].nunique())
+col3.metric("Tiers included", filtered["tier"].nunique())
+
+st.divider()
+
+st.subheader("Does surprise size correlate with abnormal drift, by tier?")
+rows = []
+for tier in sorted(filtered["tier"].unique()):
+    sub = filtered[filtered["tier"] == tier]
+    if len(sub) < 5:
+        continue
+    r, p = stats.spearmanr(sub["surprise_percentage"], sub["abnormal_drift_10d_pct"])
+    rows.append({"tier": tier, "n": len(sub), "spearman_r": round(r, 3), "p_value": round(p, 4),
+                 "significant (p<0.05)": "yes" if p < 0.05 else "no"})
+st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+st.divider()
+
+left, right = st.columns(2)
+
+with left:
+    st.subheader("Avg. abnormal drift by surprise quintile")
+    quintiled = filtered.copy()
+    quintiled["surprise_quintile"] = pd.qcut(
+        quintiled["surprise_percentage"], 5,
+        labels=["1: Big miss", "2: Miss", "3: Meet", "4: Beat", "5: Big beat"],
+        duplicates="drop",
+    )
+    bucket_summary = quintiled.groupby("surprise_quintile", observed=True)["abnormal_drift_10d_pct"].mean().reset_index()
+    fig = px.bar(bucket_summary, x="surprise_quintile", y="abnormal_drift_10d_pct",
+                 labels={"abnormal_drift_10d_pct": "Avg abnormal drift (10d, %)", "surprise_quintile": "Surprise bucket"})
+    st.plotly_chart(fig, use_container_width=True)
+
+with right:
+    st.subheader("Surprise size vs. abnormal drift")
+    fig2 = px.scatter(filtered, x="surprise_percentage", y="abnormal_drift_10d_pct", color="tier",
+                       hover_data=["symbol", "reported_date"],
+                       labels={"surprise_percentage": "Earnings surprise (%)", "abnormal_drift_10d_pct": "Abnormal drift (10d, %)"})
+    st.plotly_chart(fig2, use_container_width=True)
+
+st.divider()
+
+st.subheader("Ticker drill-down")
+symbol = st.selectbox("Symbol", options=sorted(filtered["symbol"].unique()))
+ticker_df = filtered[filtered["symbol"] == symbol].sort_values("reported_date")
+st.dataframe(
+    ticker_df[["reported_date", "report_time", "surprise_percentage", "day0_date",
+               "drift_10d_pct", "abnormal_drift_10d_pct", "volume_spike_ratio", "volatility_change_ratio"]],
+    use_container_width=True, hide_index=True,
+)
