@@ -297,14 +297,31 @@ remotely significant, and the curve actually declines slightly instead of climbi
 """)
 
 md("""\
+## 7. A few more angles
+
+I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
+result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
+or volatility change predict drift on their own (they don't either), priced the most
+obvious naive PEAD trade (long "big beat", short "big miss") against a realistic 20bps
+round-trip cost assumption (it loses money even before costs, at -0.009% gross), and
+quantified survivorship bias in this ticker universe: the median stock here still roughly
+matched the market over its full history and the mean is far above it, since this universe
+was picked as companies that are still around and doing well today. That bias is a real
+part of why even random non-earnings days showed positive drift in the placebo check above.
+See `sector_analysis.py`, `signal_analysis.py`, `economic_significance.py`, and
+`survivorship_check.py` for the full output.
+""")
+
+md("""\
 ## Conclusion
 
 No statistically significant relationship between earnings surprise size and abnormal
-post-earnings drift, in any tier, across six independent angles: bucketed significance
+post-earnings drift, in any tier, across every angle I tried: bucketed significance
 testing, cluster-robust regression, a walk-forward-validated classifier, a market-beta
-validity check, an event-study CAR with a 100-run placebo comparison, and a proper
-beta-adjusted market model. The coverage hypothesis didn't hold up either — every tier
-stayed statistically indistinguishable from zero, and the estimates converged closer to
+validity check, an event-study CAR with a 100-run placebo comparison, a proper
+beta-adjusted market model, a sector-level cut, alternate signals, and economic
+significance. The coverage hypothesis didn't hold up either. Every tier stayed
+statistically indistinguishable from zero, and the estimates converged closer to
 zero, not further from it, as the sample grew from 807 to 2,953 events.
 
 Full methodology, all the limitations, and instructions to reproduce this are in
