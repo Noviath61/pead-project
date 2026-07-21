@@ -92,46 +92,57 @@ print(f"n={len(per_event_continuation)}  mean post-day0 CAR={per_event_continuat
 print()
 print("=== Placebo check: does the SAME test on RANDOM (non-earnings) days show the same thing? ===")
 print("(If a random 20-day window also shows a significant positive drift for this stock sample,")
-print(" the earnings-day result above is not earnings-specific - just general sample drift.)")
+print(" the earnings-day result above is not earnings-specific - just general sample drift.")
+print(" Repeated 100x with different random draws - a single draw could just be lucky/unlucky -")
+print(" to get an actual empirical null distribution rather than trusting one sample.)")
 
-rng = np.random.default_rng(42)
 real_day0_by_symbol = events.groupby("symbol")["day0_date"].apply(set).to_dict()
 EXCLUSION_BUFFER = 25
+N_PLACEBO_RUNS = 100
 
-placebo_records = []
-placebo_id = 0
+eligible_by_symbol = {}
 for symbol, ev_group in events.groupby("symbol"):
     sdf = by_symbol.get(symbol)
     if sdf is None:
         continue
     real_dates = real_day0_by_symbol.get(symbol, set())
     real_indices = set(sdf.index[sdf["date"].isin(real_dates)])
-
-    eligible = [
+    eligible = np.array([
         i for i in range(OFFSET_BEFORE, len(sdf) - OFFSET_AFTER)
         if not any(abs(i - r) <= EXCLUSION_BUFFER for r in real_indices)
-    ]
-    if not eligible:
-        continue
+    ])
+    eligible_by_symbol[symbol] = (sdf, eligible, len(ev_group))
 
-    n_needed = len(ev_group)
-    sampled = rng.choice(eligible, size=min(n_needed, len(eligible)), replace=False)
 
-    for day0_idx in sampled:
-        placebo_id += 1
-        for offset in range(1, OFFSET_AFTER + 1):
-            i = day0_idx + offset
-            row_date = sdf.loc[i, "date"]
-            stock_ret = sdf.loc[i, "daily_return"]
-            spy_ret = spy_by_date.get(row_date)
-            if pd.isna(stock_ret) or spy_ret is None or pd.isna(spy_ret):
-                continue
-            placebo_records.append({
-                "placebo_id": placebo_id, "abnormal_return_pct": (stock_ret - spy_ret) * 100,
-            })
+def run_one_placebo(rng):
+    placebo_records_run = []
+    for symbol, (sdf, eligible, n_needed) in eligible_by_symbol.items():
+        if len(eligible) == 0:
+            continue
+        sampled = rng.choice(eligible, size=min(n_needed, len(eligible)), replace=False)
+        for day0_idx in sampled:
+            future_idx = sdf.index[day0_idx + 1: day0_idx + OFFSET_AFTER + 1]
+            future_dates = sdf.loc[future_idx, "date"]
+            stock_rets = sdf.loc[future_idx, "daily_return"]
+            spy_rets = future_dates.map(spy_by_date)
+            valid = stock_rets.notna() & spy_rets.notna()
+            placebo_records_run.append(((stock_rets[valid] - spy_rets[valid]) * 100).sum())
+    return placebo_records_run
 
-placebo_df = pd.DataFrame(placebo_records)
-per_placebo_continuation = placebo_df.groupby("placebo_id")["abnormal_return_pct"].sum()
-t_stat_p, p_value_p = stats.ttest_1samp(per_placebo_continuation, 0)
-print(f"n={len(per_placebo_continuation)}  mean placebo 20d CAR={per_placebo_continuation.mean():.3f}%  "
-      f"t={t_stat_p:.2f}  p={p_value_p:.4f}")
+
+placebo_run_means = []
+for run in range(N_PLACEBO_RUNS):
+    rng = np.random.default_rng(run)
+    run_cars = run_one_placebo(rng)
+    placebo_run_means.append(sum(run_cars) / len(run_cars))
+
+placebo_run_means = np.array(placebo_run_means)
+real_mean = per_event_continuation.mean()
+empirical_p = (placebo_run_means >= real_mean).mean()
+
+print(f"real post-day0 mean CAR: {real_mean:.3f}%")
+print(f"placebo distribution across {N_PLACEBO_RUNS} runs: "
+      f"mean={placebo_run_means.mean():.3f}%  std={placebo_run_means.std():.3f}%  "
+      f"min={placebo_run_means.min():.3f}%  max={placebo_run_means.max():.3f}%")
+print(f"empirical p-value (fraction of random-day runs with mean CAR >= the real earnings-day "
+      f"mean): {empirical_p:.3f}")
