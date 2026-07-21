@@ -11,17 +11,30 @@ load_dotenv()
 st.set_page_config(page_title="PEAD Analysis", layout="wide")
 
 
+SNAPSHOT_PATH = "snapshot/earnings_drift.csv"
+
+
 @st.cache_data
 def load_data():
-    db_url = (
-        f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-        f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
+    try:
+        db_url = (
+            f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
+            f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
+        )
+        engine = create_engine(db_url)
+        return pd.read_sql("SELECT * FROM earnings_drift", engine), "live database"
+    except Exception:
+        df = pd.read_csv(SNAPSHOT_PATH, parse_dates=["reported_date", "day0_date"])
+        return df, "static snapshot"
+
+
+df, data_source = load_data()
+if data_source == "static snapshot":
+    st.info(
+        "Showing a static data snapshot (no live database connection available in this "
+        "environment). Run this locally with Postgres for live, re-runnable analysis.",
+        icon="ℹ️",
     )
-    engine = create_engine(db_url)
-    return pd.read_sql("SELECT * FROM earnings_drift", engine)
-
-
-df = load_data()
 
 st.title("Post-Earnings Announcement Drift (PEAD) Analysis")
 st.caption(
