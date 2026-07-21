@@ -20,7 +20,7 @@ TICKERS = [
     "JPM", "BAC", "V", "UNH", "JNJ", "WMT", "COST", "LMT", "BA", "GE",
 ]
 
-PRICE_START = "2019-01-01"
+PRICE_START = "2006-01-01"
 PRICE_END = "2026-07-20"
 
 UPSERT_EARNINGS = text("""
