@@ -13,9 +13,12 @@ from ingest import engine, UPSERT_EARNINGS, UPSERT_PRICE
 TEST_SYMBOL = "ZZZTEST"
 BENCHMARK_SYMBOL = "SPY"
 
-# A date range safely before PRICE_START (2019-01-01) used everywhere else in this
-# project, so these synthetic rows can never collide with real ingested data —
-# in this dev DB or in a fresh CI database that has no data at all.
+# NOTE: this date range is NOT assumed to be free of real data - it once was (before
+# real price history got extended back to 2006), and a version of this fixture that
+# relied on that assumption ended up permanently deleting real SPY history when that
+# assumption silently became false. The fixture below backs up and restores whatever
+# real SPY rows exist at these exact dates instead, so it is safe regardless of how
+# far back real ingested data ever extends.
 START_DATE = "2010-01-04"
 
 # Fixed, hand-chosen daily returns (not all identical, so volatility is nonzero
@@ -57,10 +60,22 @@ def synthetic_data():
     benchmark_closes = _closes_from_returns(400.0, BENCHMARK_DAILY_RETURNS)
     volumes = [1_000_000 + i * 1000 for i in range(len(DAILY_RETURNS))]
 
+    benchmark_dates = [d.date() for d in trading_days]
+
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM earnings_events WHERE symbol = :s"), {"s": TEST_SYMBOL})
-        conn.execute(text("DELETE FROM daily_prices WHERE symbol IN (:s, :b) AND date < '2019-01-01'"),
-                     {"s": TEST_SYMBOL, "b": BENCHMARK_SYMBOL})
+        conn.execute(text("DELETE FROM daily_prices WHERE symbol = :s"), {"s": TEST_SYMBOL})
+
+        # Back up any REAL benchmark rows at these exact dates before overwriting them.
+        # Never delete by date range here - only ever touch the specific dates this
+        # fixture is about to write, and always put back exactly what was there.
+        existing_benchmark_rows = conn.execute(
+            text("""SELECT date, open, high, low, close, volume FROM daily_prices
+                     WHERE symbol = :b AND date = ANY(:dates)"""),
+            {"b": BENCHMARK_SYMBOL, "dates": benchmark_dates},
+        ).mappings().all()
+        existing_benchmark_rows = [dict(row) for row in existing_benchmark_rows]
+
         conn.execute(text("""
             INSERT INTO ticker_tiers (symbol, tier, sector) VALUES (:s, 'test', 'Test')
             ON CONFLICT (symbol) DO NOTHING
@@ -93,9 +108,26 @@ def synthetic_data():
 
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM earnings_events WHERE symbol = :s"), {"s": TEST_SYMBOL})
-        conn.execute(text("DELETE FROM daily_prices WHERE symbol IN (:s, :b) AND date < '2019-01-01'"),
-                     {"s": TEST_SYMBOL, "b": BENCHMARK_SYMBOL})
+        conn.execute(text("DELETE FROM daily_prices WHERE symbol = :s"), {"s": TEST_SYMBOL})
         conn.execute(text("DELETE FROM ticker_tiers WHERE symbol = :s"), {"s": TEST_SYMBOL})
+
+        restored_dates = set()
+        for row in existing_benchmark_rows:
+            conn.execute(UPSERT_PRICE, {
+                "symbol": BENCHMARK_SYMBOL, "date": row["date"],
+                "open": row["open"], "high": row["high"], "low": row["low"],
+                "close": row["close"], "volume": row["volume"],
+            })
+            restored_dates.add(row["date"])
+
+        # Any benchmark date this fixture wrote that had NO real row before: remove it,
+        # since there was genuinely nothing there originally.
+        dates_to_remove = [d for d in benchmark_dates if d not in restored_dates]
+        if dates_to_remove:
+            conn.execute(
+                text("DELETE FROM daily_prices WHERE symbol = :b AND date = ANY(:dates)"),
+                {"b": BENCHMARK_SYMBOL, "dates": dates_to_remove},
+            )
 
 
 def test_day0_date_is_next_trading_day_after_post_market_report(synthetic_data):
