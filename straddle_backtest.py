@@ -140,6 +140,10 @@ print("here: historical vol alone is a bad price for an earnings option, real IV
 print("that for exactly this reason, and whether it runs rich ENOUGH to be a profitable sale, net of")
 print("realistic spreads and sizing, is a question only real options-chain data could answer.")
 
+df[["symbol", "tier", "sector", "day0_date", "surprise_percentage", "pnl_pct"]].to_csv(
+    "snapshot/straddle_pnl.csv", index=False
+)
+
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
 
 ax = axes[0]

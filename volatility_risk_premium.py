@@ -132,6 +132,10 @@ print("move behaves like a one-time jump rather than the start of a multi-day tr
 print("cleaner setup for a defined-risk premium-selling trade (e.g. an iron condor into earnings)")
 print("than one where direction tends to keep going.")
 
+df[["symbol", "tier", "sector", "day0_date", "surprise_percentage", "jump_ratio"]].to_csv(
+    "snapshot/volatility_jump.csv", index=False
+)
+
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
 
 ax = axes[0]

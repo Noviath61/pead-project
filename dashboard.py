@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -117,6 +118,60 @@ try:
     st.plotly_chart(fig3, use_container_width=True)
 except FileNotFoundError:
     st.caption("Run `python event_study.py` to generate this chart.")
+
+st.divider()
+
+st.subheader("Volatility around earnings: what actually matters for selling options")
+st.caption(
+    "A different question from PEAD: not which way the stock moves after earnings, but how "
+    "much it moves on the day itself, relative to a normal trading day for that same stock. "
+    "This is the part of the project closest to actually trading options around earnings."
+)
+try:
+    jump_df = pd.read_csv("snapshot/volatility_jump.csv", parse_dates=["day0_date"])
+    straddle_df = pd.read_csv("snapshot/straddle_pnl.csv", parse_dates=["day0_date"])
+    jump_filtered = jump_df[jump_df["tier"].isin(tiers) & jump_df["sector"].isin(sectors)]
+    straddle_filtered = straddle_df[straddle_df["tier"].isin(tiers) & straddle_df["sector"].isin(sectors)]
+
+    vcol1, vcol2, vcol3 = st.columns(3)
+    geo_mean = np.exp(np.log(jump_filtered.loc[jump_filtered["jump_ratio"] > 0, "jump_ratio"]).mean())
+    vcol1.metric("Geometric mean jump ratio", f"{geo_mean:.2f}x",
+                 help="Earnings-day move divided by a normal day's move for that stock")
+    mean_straddle_pnl = straddle_filtered["pnl_pct"].mean()
+    vcol2.metric(
+        "Historical-vol-priced straddle, mean P&L", f"{mean_straddle_pnl:+.2f}%",
+        help="Selling an at-the-money straddle priced off trailing volatility (Brenner-Subrahmanyam)",
+    )
+    vcol3.metric("Straddle win rate", f"{(straddle_filtered['pnl_pct'] > 0).mean() * 100:.1f}%")
+
+    vleft, vright = st.columns(2)
+    with vleft:
+        fig4 = px.histogram(
+            jump_filtered[jump_filtered["jump_ratio"] <= 8], x="jump_ratio", nbins=40,
+            labels={"jump_ratio": "Earnings-day move / normal day's move"},
+            title="Distribution of the earnings-day volatility jump",
+        )
+        fig4.add_vline(x=1.0, line_dash="dash", line_color="gray", annotation_text="Normal day")
+        st.plotly_chart(fig4, use_container_width=True)
+    with vright:
+        sector_pnl = straddle_filtered.groupby("sector")["pnl_pct"].mean().reset_index()
+        fig5 = px.bar(
+            sector_pnl.sort_values("pnl_pct"), x="sector", y="pnl_pct",
+            labels={"sector": "Sector", "pnl_pct": "Mean straddle P&L (%)"},
+            title="Historical-vol-priced straddle P&L by sector",
+        )
+        fig5.add_hline(y=0, line_color="black")
+        st.plotly_chart(fig5, use_container_width=True)
+    st.caption(
+        "None of this measures real implied volatility, there's no options-chain data in this "
+        "project. It shows the realized side only: how big the reaction actually was, and what "
+        "it would have cost to sell into it at a price set by historical volatility alone."
+    )
+except FileNotFoundError:
+    st.caption(
+        "Run `python volatility_risk_premium.py` and `python straddle_backtest.py` to "
+        "generate this section."
+    )
 
 st.divider()
 

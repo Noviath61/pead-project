@@ -584,8 +584,9 @@ predict direction (it doesn't, honestly reported either way).
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
 type checking both wired into CI alongside the test suite, a `Makefile` for the common
-commands, a Streamlit dashboard with a static-snapshot fallback for when there's no live
-database, a narrative Jupyter notebook as a companion to the pipeline scripts, and a shared
+commands, a Streamlit dashboard covering both the PEAD and the volatility/options tracks with
+a static-snapshot fallback for when there's no live database, a narrative Jupyter notebook as
+a companion to the pipeline scripts, and a shared
 `db.py` module (`get_engine()`) that the 25+ analysis scripts now all import instead of each
 repeating its own copy of the same connection-string boilerplate, a straightforward DRY
 cleanup that got more worth doing as the script count grew past two dozen.
@@ -681,6 +682,8 @@ jupyter nbconvert --to notebook --execute --inplace analysis.ipynb  # rebuild th
 ```
 
 The dashboard also runs with no database at all, falling back to the committed
-`snapshot/earnings_drift.csv`. That means anyone can clone this repo and run
-`streamlit run dashboard.py` with zero setup, and it's also what would power a public hosted
-deployment, since a hosted instance has no access to the local Postgres container.
+`snapshot/earnings_drift.csv`, plus `snapshot/volatility_jump.csv` and
+`snapshot/straddle_pnl.csv` for the volatility/options section. That means anyone can clone
+this repo and run `streamlit run dashboard.py` with zero setup, and it's also what would
+power a public hosted deployment, since a hosted instance has no access to the local Postgres
+container.
