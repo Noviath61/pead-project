@@ -151,6 +151,21 @@ Applied separately to the 8 quintile/tier tests and the 6 cluster-robust regress
 survives in either family. The same pattern (one test looks marginal alone, none survive
 correction) reproduced at four different sample sizes as the dataset grew from 807 to 2,953.
 
+### Sector cut, and other signals
+
+Same test sliced by sector instead of market-cap tier: one marginal raw result (Industrials,
+p=0.047) that also doesn't survive correction (0.283). Volume spike and volatility change,
+the other two features this pipeline computes, don't predict drift either, in any tier
+(all corrected p-values above 0.58).
+
+### Does it even make economic sense to trade?
+
+Statistical significance and economic significance are different questions. The most obvious
+naive PEAD trade, long the "big beat" quintile and short "big miss," nets a gross spread of
+-0.009% before any trading costs at all, and about -0.41% after a conservative 20bps
+round-trip cost assumption per leg. Not tradeable by any standard, on top of never being
+statistically significant to begin with.
+
 ## Interpretation
 
 No significant relationship between surprise size and abnormal drift, in any tier, across six
@@ -162,9 +177,18 @@ The placebo check is the strongest single piece of evidence here. It shows a res
 statistically significant on its own can be fully explained by general sample drift that has
 nothing to do with earnings, and that testing for that directly, instead of assuming a small
 p-value means what it looks like, is what separates a credible result from a false positive.
+Part of why that general drift exists at all is survivorship bias (see below): this universe
+is companies that are still around and doing well today, not a random sample of everything
+that existed back to 2006.
 
 ## Limitations
 
+- Survivorship bias: this universe was picked as well-known companies today, which by
+  construction excludes anything that got delisted or went bankrupt along the way. The median
+  ticker here still roughly matched the market over its full history, and the mean is far
+  above it (see `survivorship_check.py`), so this sample was never going to be representative
+  of "the market" as a whole, and that inflates the general upward drift the placebo check
+  measured against
 - Mid/small-cap Day-0 timing defaults to "post-market" rather than a confirmed report time
 - A handful of originally-targeted small-cap tickers got dropped for lack of historical data
   density, itself a small sign that lower-coverage stocks have thinner historical records
@@ -185,9 +209,11 @@ tracking, and a SQL view built on window functions instead of pulling everything
 
 **Statistics**: quintile bucketing, cluster-robust regression with an outlier-driven false
 positive diagnosed and fixed along the way, a market-beta validity check, walk-forward
-cross-validation instead of a leaky random split, Benjamini-Hochberg correction across two
-test families, and an event-study CAR with a 100-run placebo control that caught a result
-that looked real but wasn't.
+cross-validation instead of a leaky random split, Benjamini-Hochberg correction across three
+test families (tier, sector, and cluster-robust), an event-study CAR with a 100-run placebo
+control that caught a result that looked real but wasn't, a naive trading strategy priced
+against realistic transaction costs to separate statistical from economic significance, and
+a survivorship-bias check quantifying why the sample drifts upward even on random days.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` and the test suite
@@ -220,6 +246,10 @@ python model.py                           # classifier
 python validity_checks.py                 # pipeline sanity check + multiple comparison correction
 python event_study.py                     # cumulative abnormal return event study + placebo check
 python market_model.py                    # beta-adjusted market-model event study
+python sector_analysis.py                 # coverage hypothesis test sliced by sector
+python signal_analysis.py                 # volume spike and volatility change as predictors
+python economic_significance.py           # naive strategy priced against trading costs
+python survivorship_check.py              # quantifies the sample's survivorship bias
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
