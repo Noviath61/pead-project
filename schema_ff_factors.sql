@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS ff_factors (
+    date   DATE NOT NULL PRIMARY KEY,
+    mkt_rf NUMERIC NOT NULL,
+    smb    NUMERIC NOT NULL,
+    hml    NUMERIC NOT NULL,
+    rf     NUMERIC NOT NULL
+);

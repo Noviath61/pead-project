@@ -26,6 +26,8 @@ pipeline:
 	python validity_checks.py
 	python event_study.py
 	python market_model.py
+	python load_ff_factors.py
+	python fama_french_model.py
 	python economic_significance.py
 	python survivorship_check.py
 	python power_analysis.py

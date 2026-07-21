@@ -22,6 +22,7 @@ echo "Applying schema..."
 docker exec -i pead-project-db-1 psql -U pead_user -d pead < schema.sql
 docker exec -i pead-project-db-1 psql -U pead_user -d pead < migrate_tiers.sql
 docker exec -i pead-project-db-1 psql -U pead_user -d pead < migrate_lineage.sql
+docker exec -i pead-project-db-1 psql -U pead_user -d pead < schema_ff_factors.sql
 docker exec -i pead-project-db-1 psql -U pead_user -d pead < create_view.sql
 
 echo ""
