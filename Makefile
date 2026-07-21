@@ -23,6 +23,7 @@ pipeline:
 	python sector_analysis.py
 	python signal_analysis.py
 	python model.py
+	python model_v2.py
 	python validity_checks.py
 	python event_study.py
 	python market_model.py

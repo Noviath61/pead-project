@@ -141,6 +141,18 @@ principle as avoiding lookahead bias in a trading backtest. 5-fold walk-forward 
 (only training on chronologically earlier events) confirms it: 49.0% and 50.2% average
 accuracy against a 51.6% baseline. Both sit at or below baseline in nearly every fold.
 
+**Does adding the jump_ratio feature help?** The volatility work later in this project
+engineered `jump_ratio` (the size of the Day-0 move relative to a normal day), which turned
+out to be one of the single strongest, most statistically significant numbers anywhere in
+this project (p=1.9x10⁻²³ in `volatility_risk_premium.py`). `model_v2.py` checks the obvious
+follow-up: does feeding that into the same walk-forward classifier actually help predict
+drift direction? Logistic regression moves by +0.41 percentage points, random forest by
++0.86, both well under a point, and still below their own baseline. That's not a contradiction:
+`jump_ratio` measures the *size* of the reaction, not which way it goes, and there's no real
+reason a magnitude feature should help predict direction. A feature can be one of the
+strongest, most real findings in the whole project by one measure (realized volatility) and
+still add essentially nothing by a completely different measure (directional accuracy).
+
 ### Pipeline validity check
 
 Raw drift tested against SPY's return should come back strongly significant, since most
@@ -443,8 +455,10 @@ volatility jump analysis (log-scale one-sample t-test) that reframes the whole d
 the question that actually matters for selling options around earnings, an options-pricing
 backtest using the Brenner-Subrahmanyam approximation to convert historical volatility into
 an at-the-money straddle price, a volatility-persistence check on whether the Day-0 spike
-lingers or reverts, and bootstrap confidence intervals comparing naive to cluster-level
-resampling on the headline correlations.
+lingers or reverts, bootstrap confidence intervals comparing naive to cluster-level
+resampling on the headline correlations, and a feature-engineering follow-up feeding the
+volatility work's strongest standalone signal back into the walk-forward classifier to check
+whether it actually helps predict direction (it doesn't, honestly reported either way).
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
@@ -517,6 +531,7 @@ make queries                              # standalone SQL showcase (business qu
 python eda.py                             # quintile + significance analysis
 python tier_analysis.py                   # coverage hypothesis test + cluster-robust regression
 python model.py                           # classifier
+python model_v2.py                        # does adding the jump_ratio feature actually help?
 python validity_checks.py                 # pipeline sanity check + multiple comparison correction
 python event_study.py                     # cumulative abnormal return event study + placebo check
 python export_charts.py                   # regenerate the README's chart images (needs event_study.py first)

@@ -550,6 +550,14 @@ their own higher detection threshold.
 See `sector_analysis.py`, `signal_analysis.py`, `economic_significance.py`,
 `survivorship_check.py`, and `power_analysis.py` for the full output on each of these.
 
+One more, since it closes a real loop: the volatility work engineered `jump_ratio` (the size
+of the Day-0 move relative to a normal day), one of the single strongest, most statistically
+significant numbers anywhere in this project. `model_v2.py` feeds it into the same
+walk-forward classifier from earlier to check whether it actually helps predict drift
+*direction*. It doesn't (both models move by under 1 percentage point), which makes sense in
+hindsight: a magnitude feature has no obvious reason to predict direction, but it would have
+been sloppy to just assume that instead of testing it.
+
 One more thing worth mentioning: writing `queries.sql` (a standalone set of SQL-only
 business-question queries, no pandas) surfaced a real bug. Postgres' NUMERIC type allows a
 literal NaN value and sorts it as larger than every real number, so "top 10 biggest beats"
