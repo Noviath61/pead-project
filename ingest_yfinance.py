@@ -5,6 +5,8 @@ from ingest import engine, UPSERT_EARNINGS, UPSERT_PRICE, already_loaded, PRICE_
 TICKERS = [
     "ASAN", "PD", "WAL", "EWBC", "ICUI", "PODD", "ANF", "FIVE", "CR", "WTS",
     "FLWS", "BBW", "NATH", "UTMD", "JBSS", "ASUR", "CATO", "MCRI", "HAFC", "SCHL",
+    "BILL", "TWLO", "PNFP", "GBCI", "TDOC", "HAE", "CHWY", "HII", "TXT", "AOS",
+    "PRGS", "SPSC", "FFIN", "CASH", "ANIP", "HSTM", "SHOO", "BOOT", "AAON", "SXI",
 ]
 
 

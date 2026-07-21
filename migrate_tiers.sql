@@ -27,5 +27,16 @@ INSERT INTO ticker_tiers (symbol, tier, sector) VALUES
     ('NATH', 'small', 'Consumer'), ('CATO', 'small', 'Consumer'),
     ('UTMD', 'small', 'Healthcare'), ('JBSS', 'small', 'Consumer'),
     ('ASUR', 'small', 'Tech'), ('MCRI', 'small', 'Consumer'),
-    ('HAFC', 'small', 'Financials'), ('SCHL', 'small', 'Consumer')
+    ('HAFC', 'small', 'Financials'), ('SCHL', 'small', 'Consumer'),
+    ('BILL', 'mid', 'Tech'), ('TWLO', 'mid', 'Tech'),
+    ('PNFP', 'mid', 'Financials'), ('GBCI', 'mid', 'Financials'),
+    ('TDOC', 'mid', 'Healthcare'), ('HAE', 'mid', 'Healthcare'),
+    ('CHWY', 'mid', 'Consumer'),
+    ('HII', 'mid', 'Defense'), ('TXT', 'mid', 'Defense'),
+    ('AOS', 'mid', 'Industrials'),
+    ('PRGS', 'small', 'Tech'), ('SPSC', 'small', 'Tech'),
+    ('FFIN', 'small', 'Financials'), ('CASH', 'small', 'Financials'),
+    ('ANIP', 'small', 'Healthcare'), ('HSTM', 'small', 'Healthcare'),
+    ('SHOO', 'small', 'Consumer'), ('BOOT', 'small', 'Consumer'),
+    ('AAON', 'small', 'Industrials'), ('SXI', 'small', 'Industrials')
 ON CONFLICT (symbol) DO UPDATE SET tier = EXCLUDED.tier, sector = EXCLUDED.sector;
