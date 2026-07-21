@@ -2,12 +2,12 @@ from db import get_engine
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_1samp
+from backtest_math import brenner_subrahmanyam_premium_pct, cap_losses
 
 pd.set_option("display.width", 200)
 
 engine = get_engine()
 
-BRENNER_SUBRAHMANYAM_CONST = 0.8
 WING_MULTIPLIER = 3  # max loss capped at 3x the credit received, a representative defined-risk setup
 
 print("=== Iron condor backtest: does capping the loss actually change the picture? ===")
@@ -65,12 +65,11 @@ WHERE v.normal_daily_vol IS NOT NULL AND v.daily_return IS NOT NULL AND v.normal
 """
 
 df = pd.read_sql(QUERY, engine)
-df["credit_pct"] = BRENNER_SUBRAHMANYAM_CONST * df["normal_daily_vol"] * 100
+df["credit_pct"] = brenner_subrahmanyam_premium_pct(df["normal_daily_vol"])
 df["realized_move_pct"] = df["day0_return"].abs() * 100
 df["pnl_uncapped"] = df["credit_pct"] - df["realized_move_pct"]
-df["max_loss_pct"] = -WING_MULTIPLIER * df["credit_pct"]
-df["pnl_capped"] = df["pnl_uncapped"].clip(lower=df["max_loss_pct"])
-df["cap_bound"] = df["pnl_uncapped"] < df["max_loss_pct"]
+df["pnl_capped"] = cap_losses(df["pnl_uncapped"], df["credit_pct"], WING_MULTIPLIER)
+df["cap_bound"] = df["pnl_capped"] > df["pnl_uncapped"]
 
 n = len(df)
 pct_capped = df["cap_bound"].mean() * 100
@@ -89,10 +88,10 @@ print()
 
 print("Sensitivity to wing width (how far out the protective wings sit, as a multiple of credit):")
 for mult in [2, 3, 4, 6]:
-    cap = -mult * df["credit_pct"]
-    capped = df["pnl_uncapped"].clip(lower=cap)
+    capped = cap_losses(df["pnl_uncapped"], df["credit_pct"], mult)
+    pct_bound = (capped > df["pnl_uncapped"]).mean() * 100
     print(f"  {mult}x credit: mean={capped.mean():+.2f}%  worst event={capped.min():.1f}%  "
-          f"cap bound on {(df['pnl_uncapped'] < cap).mean() * 100:.1f}% of events")
+          f"cap bound on {pct_bound:.1f}% of events")
 print()
 
 by_tier = df.groupby("tier")[["pnl_uncapped", "pnl_capped"]].mean().round(2)

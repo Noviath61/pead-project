@@ -582,8 +582,11 @@ standalone signal back into the walk-forward classifier to check whether it actu
 predict direction (it doesn't, honestly reported either way).
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
-synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
-type checking both wired into CI alongside the test suite, a `Makefile` for the common
+synthetic fixtures and checks the SQL view against them exactly, a second suite of pure unit
+tests (`backtest_math.py`) covering the compounding, loss-capping, and options-pricing math
+shared by the backtest scripts, hand-calculated and asserted independently of the
+implementation, `ruff` linting and `mypy` type checking both wired into CI alongside the test
+suite, a `Makefile` for the common
 commands, a Streamlit dashboard covering both the PEAD and the volatility/options tracks with
 a static-snapshot fallback for when there's no live database, a narrative Jupyter notebook as
 a companion to the pipeline scripts, and a shared

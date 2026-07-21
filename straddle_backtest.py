@@ -2,18 +2,11 @@ from db import get_engine
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_1samp
+from backtest_math import brenner_subrahmanyam_premium_pct
 
 pd.set_option("display.width", 200)
 
 engine = get_engine()
-
-# Brenner & Subrahmanyam (1988), "A Simple Formula to Compute the Implied Standard
-# Deviation": an at-the-money call or put is worth about 0.4 * S * sigma * sqrt(T), so an
-# ATM straddle (call + put) is about 0.8 * S * sigma * sqrt(T). With T = 1 trading day and
-# sigma expressed as a DAILY standard deviation already (no annualizing needed, the sqrt(T)
-# term collapses to 1 when sigma and T are in the same units), this reduces to:
-#     straddle price, as a % of the stock price  =  0.8 * daily_sigma
-BRENNER_SUBRAHMANYAM_CONST = 0.8
 
 print("=== Straddle backtest: selling a proxy at-the-money straddle into every earnings event ===")
 print("(volatility_risk_premium.py showed the realized earnings-day move is several times a")
@@ -71,7 +64,7 @@ WHERE v.normal_daily_vol IS NOT NULL AND v.daily_return IS NOT NULL AND v.normal
 """
 
 df = pd.read_sql(QUERY, engine)
-df["straddle_premium_pct"] = BRENNER_SUBRAHMANYAM_CONST * df["normal_daily_vol"] * 100
+df["straddle_premium_pct"] = brenner_subrahmanyam_premium_pct(df["normal_daily_vol"])
 df["realized_move_pct"] = df["day0_return"].abs() * 100
 # Simplified one-period payoff at expiration: keep the premium, pay out whatever the stock
 # moved beyond it. Ignores bid/ask spread, commissions, assignment/pin risk, and early

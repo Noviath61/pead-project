@@ -1,6 +1,7 @@
 from db import get_engine
 import pandas as pd
 import matplotlib.pyplot as plt
+from backtest_math import compound_wealth_index, max_drawdown_pct
 
 pd.set_option("display.width", 200)
 
@@ -43,7 +44,7 @@ trades = pd.concat([longs, shorts]).sort_values("day0_date").reset_index(drop=Tr
 # risks only POSITION_SIZE_FRACTION of capital (not 100%), reflecting a book that holds
 # several positions at once rather than one all-in bet after another - modeling true
 # position overlap/timing is out of scope for this illustration.
-trades["wealth_index"] = (1 + trades["trade_return_pct"] / 100 * POSITION_SIZE_FRACTION).cumprod()
+trades["wealth_index"] = compound_wealth_index(trades["trade_return_pct"], POSITION_SIZE_FRACTION)
 
 n_trades = len(trades)
 span_years = (trades["day0_date"].max() - trades["day0_date"].min()).days / 365.25
@@ -53,9 +54,7 @@ mean_return = trades["trade_return_pct"].mean()
 std_return = trades["trade_return_pct"].std()
 sharpe = (mean_return / std_return) * (trades_per_year ** 0.5)
 
-running_max = trades["wealth_index"].cummax()
-drawdown_pct = (trades["wealth_index"] / running_max - 1) * 100
-max_drawdown = drawdown_pct.min()
+max_drawdown = max_drawdown_pct(trades["wealth_index"])
 
 win_rate = (trades["trade_return_pct"] > 0).mean() * 100
 total_return_pct = (trades["wealth_index"].iloc[-1] - 1) * 100
