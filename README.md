@@ -69,14 +69,16 @@ flowchart LR
     FMP[Financial Modeling Prep] --> DB
     FF[Ken French data library] --> DB
     DB --> VIEW[earnings_drift SQL view]
-    VIEW --> STATS[Stats: quintiles, cluster-robust\nregression, power analysis]
+    VIEW --> STATS[Stats: quintiles, cluster-robust\nregression, bootstrap CI, power analysis]
     VIEW --> FACTORS[Market model + Fama-French 3-factor]
-    VIEW --> ML[Classifier: walk-forward CV]
+    VIEW --> ML[Classifier: walk-forward CV\n+ jump_ratio feature test]
+    DB --> VOL[Volatility/options: jump ratio, GARCH,\nstraddle + iron condor backtests]
     VIEW --> DASH[Streamlit dashboard]
     VIEW --> NB[analysis.ipynb]
     STATS --> README[This README]
     FACTORS --> README
     ML --> README
+    VOL --> README
 ```
 
 ## Results
@@ -488,6 +490,18 @@ p-value means what it looks like, is what separates a credible result from a fal
 Part of why that general drift exists at all is survivorship bias (see below): this universe
 is companies that are still around and doing well today, not a random sample of everything
 that existed back to 2006.
+
+That null result is genuinely the whole answer to the PEAD question this project set out to
+test. It's not the whole answer to the personal question that motivated it, though. Reframed
+around volatility instead of direction, the same data shows something real and large:
+earnings days move several times a normal trading day (confirmed under two different
+volatility models, a simple rolling window and GARCH), that jump doesn't linger into the
+following two weeks, and a historical-vol-priced options trade sold into it loses money
+consistently enough to be statistically undeniable. None of that is a trading strategy on its
+own, this project has no options-chain data to say whether real implied volatility is priced
+richly enough to sell profitably, but it is a real, quantified, sector-varying pattern
+(Tech runs hottest, Defense barely moves) that a purely directional PEAD test would never
+have surfaced.
 
 ## Limitations
 
