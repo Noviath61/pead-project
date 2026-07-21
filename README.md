@@ -41,7 +41,7 @@ This project asks two questions:
 - **Signals tested**: earnings surprise size, pre-earnings 5-day price momentum, volume spike
   on Day 0 relative to the trailing 20-day average, and volatility change (10 days after vs.
   20 days before)
-- **Drift window**: 5 and 10 trading days after Day 0
+- **Drift window**: 5, 10, and 20 trading days after Day 0
 
 Data pulled via each API, stored in a normalized PostgreSQL schema (running in Docker),
 joined via a SQL view using layered window functions (`LEAD`/`LAG`, rolling `AVG`/`STDDEV_SAMP`
@@ -159,8 +159,9 @@ correction) reproduced independently at four different sample sizes as the datas
 **No statistically significant relationship was found between earnings surprise size and
 abnormal post-earnings drift, in any tier, using any of six different analytical lenses**
 (bucketed significance test, cluster-robust regression, walk-forward-validated classifier,
-market-beta validity check, and event-study CAR with placebo comparison). The coverage
-hypothesis predicted the surprise-drift relationship should strengthen as coverage decreases;
+market-beta validity check, event-study CAR with a 100-run placebo comparison, and a proper
+beta-adjusted market-model event study). The coverage hypothesis predicted the surprise-drift
+relationship should strengthen as coverage decreases;
 instead, every tier stayed statistically indistinguishable from zero, and more than tripling
 the sample size (807 → 2,953 events) made estimates converge closer to zero rather than
 revealing a hidden effect — the signature of a genuinely absent relationship rather than an
@@ -180,6 +181,14 @@ result from a false positive.
 - A handful of originally-targeted small-cap tickers were dropped from the final view due to
   insufficient historical data density — itself a small, consistent data point about
   lower-coverage stocks having thinner historical records
+- The market-model beta estimate needs a clean ~280-day window before each event; 96 of 2,953
+  events (mostly earlier in a ticker's price history) don't have one and are excluded from that
+  specific analysis, though they're included everywhere else
+- Every individual family of tests (quintile buckets, tier correlations, cluster-robust
+  regressions) was corrected for multiple comparisons *within* that family, but this project
+  ran many such families across its lifetime; a maximally strict analysis would correct across
+  all of them jointly. Given every family already came back null, a stricter joint correction
+  would not change the conclusion — but it's worth naming as the more rigorous alternative
 
 ## What this demonstrates
 
@@ -251,9 +260,10 @@ python tier_analysis.py                   # coverage hypothesis test + cluster-r
 python model.py                           # classifier
 python validity_checks.py                 # pipeline sanity check + multiple comparison correction
 python event_study.py                     # cumulative abnormal return event study + placebo check
+python market_model.py                    # beta-adjusted market-model event study
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
 ```
 
-The dashboard also runs without a database at all, using the committed `snapshot/earnings_drift.csv` — this is what powers the public deployment (see below), and lets anyone clone the repo and run `streamlit run dashboard.py` immediately with zero setup.
+The dashboard also runs without a database at all, using the committed `snapshot/earnings_drift.csv` as a fallback — this lets anyone clone the repo and run `streamlit run dashboard.py` immediately with zero setup, and is also what would power a public hosted deployment (e.g. Streamlit Community Cloud), since a hosted instance has no access to the local Postgres container.
