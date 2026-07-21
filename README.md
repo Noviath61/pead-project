@@ -8,15 +8,18 @@ and the research also says it should be strongest in small, under-covered stocks
 in mega-caps everyone already watches. I wanted to actually test that myself on real data
 instead of just taking it on faith.
 
-**Quick summary:** tested on 2,953 earnings events across 60 stocks, using over a dozen
-independent statistical methods, from simple bucketing up to a full Fama-French 3-factor model
-and a compounded equity-curve backtest. No significant effect anywhere, and the null result
-held up (got stronger, actually) as the sample grew from 807 to 2,953 events. Along the way I
-caught several real bugs: my own test suite quietly deleting real production data, an
-unwinsorized regression producing a false positive that a placebo check exposed, a Postgres
-NaN-sorting bug that corrupted raw SQL queries, and a naive backtest that mathematically wiped
-out a portfolio because of unrealistic position sizing, not because of anything about the
-strategy itself.
+**Quick summary:** tested on 2,953 earnings events across 60 stocks, using well over a dozen
+independent statistical methods, from simple bucketing up to a full Fama-French 3-factor model,
+a compounded equity-curve backtest, and a historical-vol-priced options backtest. No significant
+PEAD effect anywhere, and the null result held up (got stronger, actually) as the sample grew
+from 807 to 2,953 events. Separately, the part of this closest to how I actually trade, earnings-day
+volatility, is real and large: earnings days move several times a normal day, consistently
+enough that a naive historical-vol-priced options strategy loses money on it. Along the way I
+caught several real bugs and a couple of my own wrong assumptions: my own test suite quietly
+deleting real production data, an unwinsorized regression producing a false positive that a
+placebo check exposed, a Postgres NaN-sorting bug that corrupted raw SQL queries, a naive
+backtest that mathematically wiped out a portfolio because of unrealistic position sizing,
+and a bootstrap CI that didn't behave the way I expected clustering to behave.
 
 See [`analysis.ipynb`](analysis.ipynb) for a narrative version with charts rendered inline.
 
@@ -284,6 +287,60 @@ after Day 0 is statistically indistinguishable from zero, the earnings-day move 
 one-time jump rather than the start of a multi-day trend, which is the cleaner setup for a
 defined-risk premium-selling trade than one where direction tends to keep going afterward.
 
+### Would selling a historical-vol-priced straddle actually have worked?
+
+The jump ratio above says the earnings-day move is real and large. `straddle_backtest.py`
+takes the obvious next step: price an at-the-money straddle using only trailing historical
+volatility, no options-chain data, using the Brenner & Subrahmanyam (1988) approximation
+(straddle price is about 0.8 x price x daily volatility for a one-day option), sell it into
+every one of these 2,964 events, and see what happens.
+
+It loses money, clearly and consistently: mean P&L of -2.92% of the stock's price per trade
+(p=2.8x10⁻¹⁸⁰), a win rate of only 31.4%, and losses in every tier (large -2.44%, mid -3.39%,
+small -3.14%). Implied vol would need to run at roughly 2.6x the trailing historical level
+just for this to break even on average.
+
+![Historical-vol-priced straddle P&L](charts/straddle_backtest.png)
+
+That's not a real counterexample to selling options for a living, and I want to be clear
+about why. This price is deliberately the cheapest reasonable price for the straddle, since
+it ignores everything the market actually knows going into an earnings date: real implied
+volatility runs well above historical volatility precisely because the market is pricing in
+the jump this project measured directly above. A 2.6x multiplier is actually within the range
+real earnings implied-vol run-ups reach in practice. What this shows honestly is a lower
+bound: if you can't get implied vol priced at least a few multiples over historical, you're
+picking up a genuinely bad number, and this project has no options-chain data to say whether
+real-world IV clears that bar by enough to be a profitable trade net of realistic spreads.
+
+### Bootstrap confidence intervals: does clustering matter here too?
+
+The cluster-robust regression earlier in this project showed that treating repeated events
+from the same company as independent observations understates uncertainty. `bootstrap_confidence_intervals.py`
+checks whether the same logic applies to a completely different tool: a bootstrap confidence
+interval around the tier-level Spearman correlations. A naive bootstrap resamples individual
+events; a cluster bootstrap resamples whole companies, keeping every quarter from a chosen
+ticker together.
+
+Going in, I expected the cluster interval to come out wider everywhere, the same story as the
+regression. That's only half true:
+
+| Tier | Observed r | Naive 95% CI width | Cluster 95% CI width | Cluster / naive |
+|---|---|---|---|---|
+| Large-cap | 0.006 | 0.123 | 0.126 | 1.02x |
+| Mid-cap | -0.000 | 0.146 | 0.125 | 0.86x |
+| Small-cap | -0.022 | 0.138 | 0.098 | 0.71x |
+
+Large-cap comes out about the same, and mid/small-cap actually come out *narrower* under
+cluster resampling. That reproduces with a different random seed and resample count, so it's
+a real pattern, not noise. My best explanation: the regression's cluster-robust standard error
+corrects for correlated residuals within a company (an unusually predictive quarter tends to
+be followed by another one), while this is resampling whole companies for a rank correlation
+computed once over the pooled tier, a different object entirely, and the quarter-to-quarter
+pattern within a single company here just isn't as internally correlated as those residuals
+were. Both intervals still comfortably straddle zero regardless, so the conclusion doesn't
+move, but "does clustering widen my interval" turned out to depend on which statistic you're
+clustering, not something safe to assume just because it mattered for the regression.
+
 ## Interpretation
 
 No significant relationship between surprise size and abnormal drift, in any tier, across
@@ -322,10 +379,18 @@ that existed back to 2006.
 - The equity-curve backtest treats every trade as sequential and independently sized at 10% of
   capital; it doesn't model overlapping positions (multiple earnings events open at once), which
   a fully realistic backtest of a real trading book would need to handle
-- The volatility jump analysis measures realized moves only. There's no options-chain data in
-  this project, so it can't say anything directly about whether implied volatility is actually
-  overpriced relative to the realized jump, only that the realized jump itself is large and
-  statistically real
+- The volatility jump analysis and the straddle backtest both measure realized moves only.
+  There's no options-chain data in this project, so neither can say anything directly about
+  whether real implied volatility is priced richly enough to be profitable to sell, only that
+  the realized jump is large and statistically real, and that a price set by historical vol
+  alone isn't good enough to sell profitably
+- The straddle backtest also ignores bid/ask spread, commissions, assignment/pin risk, and the
+  choice to close a position before expiration instead of holding to it, all real frictions a
+  live options book has to manage
+- The bootstrap confidence intervals use 5,000 resamples per tier; more would narrow the Monte
+  Carlo noise in the interval edges slightly further, though the qualitative pattern (cluster
+  CI similar or narrower, not wider, for this particular statistic) already reproduces cleanly
+  across different seeds and resample counts
 
 ## What this demonstrates
 
@@ -348,9 +413,12 @@ survivorship-bias check quantifying why the sample drifts upward even on random 
 formal power analysis showing the null result isn't just an underpowered test, a Fama-French
 3-factor model using real factor data pulled from Ken French's public library, the same
 technique used in actual academic asset-pricing research, a properly compounded equity-curve
-backtest with Sharpe ratio and max drawdown instead of just a pooled average return, and a
+backtest with Sharpe ratio and max drawdown instead of just a pooled average return, a
 volatility jump analysis (log-scale one-sample t-test) that reframes the whole dataset around
-the question that actually matters for selling options around earnings.
+the question that actually matters for selling options around earnings, an options-pricing
+backtest using the Brenner-Subrahmanyam approximation to convert historical volatility into
+an at-the-money straddle price, and bootstrap confidence intervals comparing naive to
+cluster-level resampling on the headline correlations.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
@@ -389,6 +457,19 @@ single undiversified account, good strategy or bad. Sizing each trade at a fixed
 removed the artifact and left a result (Sharpe -0.36, max drawdown -41%) that's actually
 readable, and still consistent with the null finding everywhere else in this project.
 
+**A wrong assumption about clustering, caught by actually running the numbers**: going into
+`bootstrap_confidence_intervals.py`, I expected the cluster-aware bootstrap interval to come
+out wider than the naive one in every tier, since that's exactly what happened with the
+cluster-robust regression standard errors earlier in this project. It didn't: large-cap came
+out about the same, and mid/small-cap actually came out narrower under cluster resampling.
+I checked this wasn't a one-off (reran with a different seed and resample count, same
+pattern), then worked out why: a regression's cluster-robust SE corrects for correlated
+residuals within a company, while a rank correlation computed once over a pooled tier is a
+different kind of object, and apparently doesn't have that same internal correlation to
+correct for. Worth including specifically because it would have been easy to just assert
+"clustering matters, therefore the cluster CI is wider" without checking, since that's the
+pattern from the earlier regression section, and the actual numbers said otherwise.
+
 ## Running it
 
 ```bash
@@ -423,6 +504,8 @@ python survivorship_check.py              # quantifies the sample's survivorship
 python power_analysis.py                  # was the test even powerful enough to find something?
 python backtest_equity_curve.py           # compounded equity curve, Sharpe ratio, max drawdown
 python volatility_risk_premium.py         # earnings-day move vs. normal-day volatility, by tier
+python straddle_backtest.py               # historical-vol-priced straddle P&L using Brenner-Subrahmanyam
+python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on the headline correlations
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment

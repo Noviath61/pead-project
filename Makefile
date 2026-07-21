@@ -33,6 +33,8 @@ pipeline:
 	python power_analysis.py
 	python backtest_equity_curve.py
 	python volatility_risk_premium.py
+	python straddle_backtest.py
+	python bootstrap_confidence_intervals.py
 
 queries:
 	docker exec -i pead-project-db-1 psql -U pead_user -d pead < queries.sql

@@ -22,11 +22,11 @@ reprice instantly and move on? And is that effect actually stronger in smaller,
 less-covered stocks, the way the literature claims?
 
 This notebook walks through what I found: 2,953 earnings events across 60 stocks (20
-large/20 mid/20 small-cap), tested nearly a dozen different ways, plus a separate look at
-earnings-day volatility that's closer to how I actually trade around these dates.
-`README.md` in this repo has the full methodology writeup; this notebook is more of a
-results tour, with the actual charts and tables rendered inline so you don't have to run
-anything to see them.
+large/20 mid/20 small-cap), tested well over a dozen different ways, plus a separate track
+on earnings-day volatility and options pricing that's closer to how I actually trade around
+these dates. `README.md` in this repo has the full methodology writeup; this notebook is
+more of a results tour, with the actual charts and tables rendered inline so you don't have
+to run anything to see them.
 """)
 
 code("""\
@@ -422,7 +422,76 @@ keep going afterward.
 """)
 
 md("""\
-## 10. A few more angles
+## 10. Would selling a historical-vol-priced straddle actually have worked?
+
+The jump ratio above says the earnings-day move is real. `straddle_backtest.py` takes the
+obvious next step: price an at-the-money straddle using only trailing historical volatility
+(no options-chain data exists in this project), via the Brenner & Subrahmanyam (1988)
+approximation, straddle price is about 0.8 x price x daily volatility for a one-day option,
+sell it into every event, and see what happens.
+""")
+
+code("""\
+# Uses the same day0_return / normal_daily_vol query as volatility_risk_premium.py;
+# see straddle_backtest.py for the full standalone SQL and computation.
+straddle_summary = pd.DataFrame({
+    "tier": ["large", "mid", "small"],
+    "n": [1243, 835, 886],
+    "mean_pnl_pct": [-2.44, -3.39, -3.14],
+    "win_rate_pct": [31.9, 32.0, 30.2],
+})
+straddle_summary
+""")
+
+md("""\
+It loses money, clearly and consistently: mean P&L of -2.92% of the stock's price per trade
+(p=2.8e-180), a win rate of only 31.4%, and losses in every tier. Implied vol would need to
+run at roughly 2.6x the trailing historical level just to break even on average, which is
+actually within the range real earnings implied-vol run-ups reach in practice. That's not a
+counterexample to selling options for a living, it's a lower bound: this project has no
+options-chain data to say whether real-world IV clears that bar by enough to be profitable
+net of realistic spreads, but pricing off historical vol alone clearly isn't good enough.
+""")
+
+md("""\
+## 11. Bootstrap confidence intervals: does clustering matter here too?
+
+The cluster-robust regression earlier showed that treating repeated events from the same
+company as independent understates uncertainty. `bootstrap_confidence_intervals.py` checks
+whether the same logic applies to a completely different tool: a bootstrap confidence
+interval around the tier-level Spearman correlations. A naive bootstrap resamples individual
+events; a cluster bootstrap resamples whole companies, keeping every quarter from a chosen
+ticker together.
+""")
+
+code("""\
+bootstrap_summary = pd.DataFrame({
+    "tier": ["large", "mid", "small"],
+    "observed_r": [0.006, -0.000, -0.022],
+    "naive_ci_width": [0.123, 0.146, 0.138],
+    "cluster_ci_width": [0.126, 0.125, 0.098],
+})
+bootstrap_summary["cluster_over_naive"] = (
+    bootstrap_summary["cluster_ci_width"] / bootstrap_summary["naive_ci_width"]
+).round(2)
+bootstrap_summary
+""")
+
+md("""\
+Going in, I expected the cluster interval to come out wider everywhere, the same story as
+the regression. That's only half true: large-cap comes out about the same, and mid/small-cap
+actually come out narrower under cluster resampling, not wider. That reproduces with a
+different random seed and resample count, so it's a real pattern. Best explanation: a
+regression's cluster-robust SE corrects for correlated residuals within a company, while this
+is resampling whole companies for a rank correlation computed once over the pooled tier, a
+different object entirely, and the quarter-to-quarter pattern here just isn't as internally
+correlated as those residuals were. Both intervals still comfortably straddle zero regardless,
+so the conclusion doesn't move, but it would have been easy to just assume clustering widens
+every interval without actually checking, and the numbers said otherwise.
+""")
+
+md("""\
+## 12. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -473,7 +542,16 @@ Separately from PEAD, the volatility jump analysis found something that is real 
 statistically strong: earnings-day moves run several times a normal trading day, more so in
 less-covered stocks. That's not a PEAD signal, it's the actual empirical basis for why options
 carry elevated implied volatility into an earnings date in the first place, and the closest
-thing in this project to the part of the market I actually trade day to day.
+thing in this project to the part of the market I actually trade day to day. Pricing an
+at-the-money straddle off historical volatility alone and selling it into every event loses
+money clearly (p=2.8e-180), which puts a number on how much richer than historical vol real
+implied vol has to run just to break even, a genuinely useful lower bound even without
+options-chain data to check it against directly.
+
+One more honest note: not every extension here confirmed what I expected going in. The
+bootstrap confidence intervals were supposed to show the same "clustering matters" story as
+the cluster-robust regression, and only did for large-cap. I'd rather report that than quietly
+assume the earlier pattern would hold everywhere.
 
 Full methodology, all the limitations, and instructions to reproduce this are in
 `README.md`.
