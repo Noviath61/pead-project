@@ -1,5 +1,9 @@
 # Post-Earnings Announcement Drift (PEAD) Analysis
 
+See [`analysis.ipynb`](analysis.ipynb) for a narrative walkthrough of this analysis with
+inline charts and tables (already executed, so it renders directly on GitHub with no setup).
+This README covers the full methodology and results in more depth.
+
 ## Question
 
 Post-earnings announcement drift (PEAD) is a well-documented market anomaly: after a company
@@ -196,6 +200,9 @@ result from a false positive.
   schema, Dockerized Postgres, idempotent ingestion with proper error handling (including a
   real bug caught and fixed: a third-party API silently returning a rate-limit notice with a
   200 status instead of an error)
+- Linting (`ruff`) wired into CI alongside the test suite
+- A narrative Jupyter notebook (`analysis.ipynb`) with real, pre-executed inline charts and
+  tables, as a readable companion to the pipeline scripts themselves
 - Advanced SQL: layered CTEs, window functions (`LEAD`, `LAG`, rolling `AVG`/`STDDEV_SAMP`
   with custom frames) for time-series feature engineering
 - A market-adjusted (abnormal return) metric, not just raw price change
@@ -264,6 +271,7 @@ python market_model.py                    # beta-adjusted market-model event stu
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
+jupyter nbconvert --to notebook --execute --inplace analysis.ipynb  # rebuild the notebook with fresh outputs
 ```
 
 The dashboard also runs without a database at all, using the committed `snapshot/earnings_drift.csv` as a fallback — this lets anyone clone the repo and run `streamlit run dashboard.py` immediately with zero setup, and is also what would power a public hosted deployment (e.g. Streamlit Community Cloud), since a hosted instance has no access to the local Postgres container.
