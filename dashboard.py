@@ -95,6 +95,24 @@ with right:
 
 st.divider()
 
+st.subheader("Event study: cumulative abnormal return around earnings (Day 0)")
+st.caption(
+    "The academic-standard way to visualize this: average abnormal return per day, "
+    "relative to the earnings reaction date, cumulated over time. A real PEAD effect "
+    "would show the line continuing to climb (or fall) steadily after Day 0. A flat "
+    "line after Day 0 means the market's reaction was essentially instant."
+)
+try:
+    car_overall = pd.read_csv("snapshot/event_study_overall.csv")
+    fig3 = px.line(car_overall, x="offset", y="car_pct",
+                    labels={"offset": "Trading days relative to Day 0", "car_pct": "Cumulative abnormal return (%)"})
+    fig3.add_vline(x=0, line_dash="dash", line_color="gray", annotation_text="Day 0 (earnings reaction)")
+    st.plotly_chart(fig3, use_container_width=True)
+except FileNotFoundError:
+    st.caption("Run `python event_study.py` to generate this chart.")
+
+st.divider()
+
 st.subheader("Ticker drill-down")
 symbol = st.selectbox("Symbol", options=sorted(filtered["symbol"].unique()))
 ticker_df = filtered[filtered["symbol"] == symbol].sort_values("reported_date")
