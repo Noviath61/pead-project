@@ -169,5 +169,8 @@ python tier_analysis.py                   # coverage hypothesis test
 python model.py                           # classifier
 python validity_checks.py                 # pipeline sanity check + multiple comparison correction
 pytest tests/ -v                          # test suite
-streamlit run dashboard.py                # interactive dashboard
+streamlit run dashboard.py                # interactive dashboard (live DB)
+python export_snapshot.py                 # refresh the static snapshot for deployment
 ```
+
+The dashboard also runs without a database at all, using the committed `snapshot/earnings_drift.csv` — this is what powers the public deployment (see below), and lets anyone clone the repo and run `streamlit run dashboard.py` immediately with zero setup.
