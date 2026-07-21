@@ -308,8 +308,17 @@ quantified survivorship bias in this ticker universe: the median stock here stil
 matched the market over its full history and the mean is far above it, since this universe
 was picked as companies that are still around and doing well today. That bias is a real
 part of why even random non-earnings days showed positive drift in the placebo check above.
-See `sector_analysis.py`, `signal_analysis.py`, `economic_significance.py`, and
-`survivorship_check.py` for the full output.
+
+One more check worth doing: was this test even powerful enough to find a real effect if
+one existed? A standard power calculation says the tier-level tests could reliably detect
+a correlation as small as 0.08-0.10 at 80% power, which is Cohen's threshold for a "small"
+effect, and every observed correlation is well below that. Two sector splits with only a
+handful of tickers (Defense, Industrials) are genuinely underpowered for something that
+small, worth naming honestly, but their observed correlations are still smaller than even
+their own higher detection threshold.
+
+See `sector_analysis.py`, `signal_analysis.py`, `economic_significance.py`,
+`survivorship_check.py`, and `power_analysis.py` for the full output on each of these.
 """)
 
 md("""\

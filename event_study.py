@@ -146,3 +146,10 @@ print(f"placebo distribution across {N_PLACEBO_RUNS} runs: "
       f"min={placebo_run_means.min():.3f}%  max={placebo_run_means.max():.3f}%")
 print(f"empirical p-value (fraction of random-day runs with mean CAR >= the real earnings-day "
       f"mean): {empirical_p:.3f}")
+
+pd.DataFrame({"placebo_run_mean_car_pct": placebo_run_means}).to_csv(
+    "snapshot/placebo_run_means.csv", index=False
+)
+pd.DataFrame({"real_mean_car_pct": [real_mean]}).to_csv(
+    "snapshot/placebo_real_mean.csv", index=False
+)

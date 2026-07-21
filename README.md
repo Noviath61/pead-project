@@ -66,6 +66,8 @@ forward/trailing returns, volume, and volatility per ticker.
 | Beat | +15.2% | +0.17% | 0.547 |
 | Big beat | +47.3% | +0.19% | 0.579 |
 
+![No staircase from miss to beat](charts/quintile_drift.png)
+
 If PEAD were real here, this should read like a staircase. It doesn't.
 
 ### Coverage hypothesis (Spearman correlation, by tier)
@@ -125,6 +127,8 @@ Average daily abnormal return, 10 days before to 20 after Day 0, cumulated. Abno
 spikes right on Day 0 (+0.61% mean vs. ~0.03-0.13% on other days), then the curve goes flat.
 The market reprices instantly here, it doesn't drift.
 
+![Cumulative abnormal return around Day 0](charts/event_study_car.png)
+
 A raw test of "any positive drift after Day 0" (ignoring surprise direction) does come back
 significant on its own: mean +0.58%, p=0.0003. So I ran a placebo check, the identical test on
 random non-earnings days, 100 times with different draws rather than trusting one lucky
@@ -133,6 +137,8 @@ comparison. The real result sits in the lower half of that distribution: placebo
 drift isn't earnings-specific. It's this sample's general upward tendency over the period, and
 random days without any news show it just as much. Without this check I'd have reported +0.58%
 as evidence for PEAD, and I'd have been wrong.
+
+![Real result versus the 100-run placebo distribution](charts/placebo_distribution.png)
 
 ### Market model: proper beta-adjusted abnormal returns
 
@@ -157,6 +163,17 @@ Same test sliced by sector instead of market-cap tier: one marginal raw result (
 p=0.047) that also doesn't survive correction (0.283). Volume spike and volatility change,
 the other two features this pipeline computes, don't predict drift either, in any tier
 (all corrected p-values above 0.58).
+
+### Was this test even powerful enough to find something?
+
+A null result only means something if the test could have detected a real effect had one
+existed. Using a standard Fisher z-transform power calculation, the tier-level tests (n=831
+to 1,237) could reliably detect a Spearman correlation as small as 0.08-0.10 at 80% power,
+which is Cohen's conventional threshold for a "small" effect. Every observed correlation is
+well below that. Two sector splits with only 4-6 tickers (Defense, Industrials) genuinely are
+underpowered for an effect that small, worth naming honestly, but their observed correlations
+are still smaller than even their own higher detection threshold. This wasn't an underpowered
+test missing something real; it just didn't find anything.
 
 ### Does it even make economic sense to trade?
 
@@ -212,8 +229,9 @@ positive diagnosed and fixed along the way, a market-beta validity check, walk-f
 cross-validation instead of a leaky random split, Benjamini-Hochberg correction across three
 test families (tier, sector, and cluster-robust), an event-study CAR with a 100-run placebo
 control that caught a result that looked real but wasn't, a naive trading strategy priced
-against realistic transaction costs to separate statistical from economic significance, and
-a survivorship-bias check quantifying why the sample drifts upward even on random days.
+against realistic transaction costs to separate statistical from economic significance, a
+survivorship-bias check quantifying why the sample drifts upward even on random days, and a
+formal power analysis showing the null result isn't just an underpowered test.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` and the test suite
@@ -245,11 +263,13 @@ python tier_analysis.py                   # coverage hypothesis test + cluster-r
 python model.py                           # classifier
 python validity_checks.py                 # pipeline sanity check + multiple comparison correction
 python event_study.py                     # cumulative abnormal return event study + placebo check
+python export_charts.py                   # regenerate the README's chart images (needs event_study.py first)
 python market_model.py                    # beta-adjusted market-model event study
 python sector_analysis.py                 # coverage hypothesis test sliced by sector
 python signal_analysis.py                 # volume spike and volatility change as predictors
 python economic_significance.py           # naive strategy priced against trading costs
 python survivorship_check.py              # quantifies the sample's survivorship bias
+python power_analysis.py                  # was the test even powerful enough to find something?
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
