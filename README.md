@@ -1,74 +1,80 @@
 # Post-Earnings Announcement Drift (PEAD) Analysis
 
-See [`analysis.ipynb`](analysis.ipynb) for a narrative walkthrough of this analysis with
-inline charts and tables (already executed, so it renders directly on GitHub with no setup).
-This README covers the full methodology and results in more depth.
+I built this to actually test a market anomaly instead of just reading about it. Post-earnings
+announcement drift (PEAD) is the idea that after a company beats or misses earnings estimates,
+its stock keeps drifting in that direction for days or weeks afterward instead of re-pricing
+instantly. It's a real, well-documented effect in the finance literature, and the literature
+also says it should be strongest in small, under-covered stocks and weakest in mega-caps
+everyone already watches closely. So I wanted to know: does that actually hold up if I test it
+myself, on real data, instead of taking it on faith?
 
-## Question
+Short answer: no, not in this sample, and I ended up testing that "no" from six different
+angles before I trusted it. Full writeup below. See [`analysis.ipynb`](analysis.ipynb) for a
+narrative version with charts and tables already rendered inline (no setup needed to view it).
 
-Post-earnings announcement drift (PEAD) is a well-documented market anomaly: after a company
-reports earnings that beat or miss analyst estimates, its stock price historically keeps
-drifting in that direction for days or weeks afterward, rather than instantly re-pricing.
-Academic research has also found the effect is strongest in small-cap, low-analyst-coverage
-stocks (which get re-priced slowly) and weakest in heavily-covered mega-caps.
-
-This project asks two questions:
+## The question
 
 1. Does PEAD show up, and is it predictable, in real market data?
-2. Does the effect actually get stronger as analyst coverage decreases, as the literature
-   suggests — tested directly with our own three-tier sample, not just cited?
+2. Does the effect get stronger as analyst coverage drops, the way the literature says it
+   should? Tested directly against my own three-tier sample, not just cited.
 
-## Data & Methodology
+## Data & methodology
 
-- **Earnings surprises** (reported EPS vs. estimated EPS, by quarter): Alpha Vantage for 12 of
-  20 large-cap tickers, yfinance for the rest (8 large-cap tickers plus all mid/small-cap) —
-  yfinance was validated against Alpha Vantage on overlapping data first (surprise percentages
-  matched within ~0.2 points) before being trusted as the source for the remaining tickers,
-  after Alpha Vantage's free-tier key stayed rate-limited far longer than its advertised daily
-  reset (over 24 hours, across two calendar days)
-- **Daily price history**: Financial Modeling Prep for large-caps, yfinance for mid/small-caps
-  (FMP's free tier only allows a small whitelist of large-cap symbols)
-- **Market benchmark**: SPY, used to compute *abnormal drift* — a stock's raw price move minus
-  the S&P 500's move over the same window, isolating the earnings-specific reaction from
-  broad market movement
-- **Universe**: 60 stocks across three market-cap tiers (20 large/20 mid/20 small), each
-  spanning Tech, Financials, Healthcare, Consumer, Defense, and Industrials
-- **History depth**: price data extends back to 2006 (or IPO date, whichever is later) rather
-  than a short recent window — since Alpha Vantage's earnings history already went back to
-  1996 for large-caps, extending price coverage unlocked hundreds of already-available
-  historical earnings events for free, without any additional API calls against rate-limited
-  endpoints
-- **"Day 0" definition**: the reported earnings date itself if released pre-market, otherwise
-  the next trading day. For the large-cap tier this uses Alpha Vantage's explicit report-time
-  field; for mid/small-caps, where that field isn't reliably available, we default to
-  "post-market" (a disclosed simplification — most companies do report after close)
-- **Signals tested**: earnings surprise size, pre-earnings 5-day price momentum, volume spike
-  on Day 0 relative to the trailing 20-day average, and volatility change (10 days after vs.
-  20 days before)
-- **Drift window**: 5, 10, and 20 trading days after Day 0
+Earnings surprises (reported EPS vs. estimated EPS) come from Alpha Vantage for 12 of the 20
+large-cap tickers, and yfinance for everything else — the other 8 large-caps plus all
+mid/small-cap tickers. I validated yfinance against Alpha Vantage on overlapping data first
+(surprise percentages matched within about 0.2 points) before trusting it as the primary
+source for the rest, after Alpha Vantage's free-tier key stayed rate-limited for over 24
+hours across two calendar days, well past its advertised daily reset.
 
-Data pulled via each API, stored in a normalized PostgreSQL schema (running in Docker),
-joined via a SQL view using layered window functions (`LEAD`/`LAG`, rolling `AVG`/`STDDEV_SAMP`
-with `ROWS BETWEEN` frames) to compute forward/trailing returns, volume, and volatility
-per ticker — no data duplication, one source of truth per fact.
+Daily price history comes from Financial Modeling Prep for large-caps and yfinance for
+mid/small-caps (FMP's free tier only allows a small whitelist of large-cap symbols, so
+mid/small-caps needed a different source entirely). SPY is the market benchmark used to
+compute abnormal drift: a stock's raw price move minus the S&P 500's move over the same
+window, which isolates the earnings-specific reaction from whatever the broad market was
+doing that week.
+
+The universe is 60 stocks across three market-cap tiers, 20 large/20 mid/20 small, each tier
+spread across Tech, Financials, Healthcare, Consumer, Defense, and Industrials so no single
+sector dominates. Price history goes back to 2006 (or IPO date, whichever is later) rather
+than just a recent window, since Alpha Vantage's earnings history already went back to 1996
+for large-caps — extending price coverage unlocked hundreds of already-available historical
+earnings events for free, no extra API calls needed.
+
+"Day 0" is the reported earnings date if the release was pre-market, otherwise the next
+trading day (a post-market release means nobody can trade on it until the following session
+opens). Large-cap uses Alpha Vantage's explicit report-time field for this; mid/small-cap
+falls back to assuming post-market, since that field isn't reliably available from yfinance —
+a disclosed simplification, and reasonable since most companies do report after close anyway.
+
+Signals tested: surprise size, 5-day pre-earnings momentum, Day-0 volume relative to the
+trailing 20-day average, and volatility change (10 days after vs. 20 days before). Drift
+windows: 5, 10, and 20 trading days after Day 0.
+
+Everything's pulled via each API into a normalized Postgres schema (running in Docker), then
+joined through a SQL view built on layered window functions (`LEAD`/`LAG`, rolling
+`AVG`/`STDDEV_SAMP` with `ROWS BETWEEN` frames) to compute forward/trailing returns, volume,
+and volatility per ticker. One source of truth per fact, no duplicated data.
 
 ## Results
 
-**2,953 earnings events** across 60 tickers (20 large-cap, 20 mid-cap, 20 small-cap), spanning
-up to 20 years of history where available.
+2,953 earnings events across all 60 tickers, spanning up to 20 years of history where
+available.
 
-**Bucketed by surprise quintile (all tiers combined):**
+### Bucketed by surprise quintile
 
 | Surprise bucket | Median surprise | Avg. abnormal drift (10d) | p-value |
 |---|---|---|---|
 | Big miss | -10.8% | +0.20% | 0.514 |
-| Miss | +1.5% | +0.61% | **0.016** |
+| Miss | +1.5% | +0.61% | 0.016 |
 | Meet | +6.5% | +0.00% | 0.983 |
 | Beat | +15.2% | +0.17% | 0.547 |
 | Big beat | +47.3% | +0.19% | 0.579 |
 
-**Coverage hypothesis test** (Spearman correlation between surprise size and abnormal drift,
-by tier, at two drift horizons):
+If PEAD were real here, this table should read like a staircase from negative to positive.
+It doesn't.
+
+### Coverage hypothesis: Spearman correlation, by tier, at two drift horizons
 
 | Tier | Window | n events | n tickers | Spearman r | p-value |
 |---|---|---|---|---|---|
@@ -79,174 +85,167 @@ by tier, at two drift horizons):
 | Small-cap | 10d | 863 | 20 | -0.021 | 0.531 |
 | Small-cap | 20d | 863 | 20 | -0.004 | 0.903 |
 
-**Cluster-robust regression** (properly accounts for repeated earnings events from the same
-company not being fully independent — a real limitation of the Spearman test above, which
-implicitly treats every event as independent). surprise_percentage is winsorized at the
-1st/99th percentile first: an initial unwinsorized pass showed a "significant" large-cap
-result driven entirely by a handful of extreme outliers (surprise values up to +6,567%, from
-near-zero EPS estimates) — a linear regression is highly sensitive to that kind of leverage
-point in a way the rank-based Spearman test isn't, which is exactly why Spearman was the
-primary test from the start.
+### Cluster-robust regression (and a real bug I caught mid-analysis)
 
-| Tier | Window | n | n tickers (clusters) | Coef | Cluster-robust p | Reliable? | Corrected p |
+Repeated earnings events from the same company aren't fully independent, so standard errors
+should be clustered by ticker rather than treated as one big pile of i.i.d. observations, the
+way the Spearman test above implicitly does. First attempt at this produced a suspiciously
+"significant" large-cap result that flatly contradicted the Spearman test on the exact same
+data. Turned out to be two compounding problems: a handful of extreme outlier surprise values
+(up to +6,567%, from companies whose estimated EPS was near zero) dominating an unwinsorized
+linear fit, and unreliable cluster-robust inference because large-cap only had 12
+ticker-clusters at the time (the econometric rule of thumb wants 30-50+). Fixed by winsorizing
+surprise_percentage at the 1st/99th percentile and flagging any tier with too few clusters to
+trust.
+
+| Tier | Window | n | clusters | Coef | Cluster-robust p | Reliable? | Corrected p |
 |---|---|---|---|---|---|---|---|
 | Large-cap | 10d | 1,237 | 20 | -0.0023 | 0.603 | Yes | 0.603 |
 | Large-cap | 20d | 1,237 | 20 | 0.0103 | 0.076 | Yes | 0.151 |
 | Mid-cap | 10d | 831 | 20 | 0.0086 | 0.054 | Yes | 0.151 |
-| Mid-cap | 20d | 831 | 20 | 0.0172 | **0.020** | Yes | 0.122 |
+| Mid-cap | 20d | 831 | 20 | 0.0172 | 0.020 | Yes | 0.122 |
 | Small-cap | 10d | 863 | 20 | -0.0039 | 0.365 | Yes | 0.438 |
 | Small-cap | 20d | 863 | 20 | 0.0057 | 0.291 | Yes | 0.436 |
 
-Every tier now has a full 20 ticker-clusters (large-cap originally had only 12 — resolved by
-sourcing the remaining 8 tickers' earnings via yfinance once Alpha Vantage's key stayed
-rate-limited past its advertised reset window), so all six results above are reliable. The one
-borderline result (mid-cap 20d, p=0.020) does not survive Benjamini-Hochberg correction across
-all 6 tests (corrected p=0.122).
+Every tier now has a full 20 ticker-clusters (large-cap originally had only 12, since it
+started out as Alpha Vantage-only; sourcing the remaining 8 tickers via yfinance fixed this
+along the way), so all six results here are reliable. The one borderline number, mid-cap at
+20 days with a raw p of 0.020, doesn't survive Benjamini-Hochberg correction across the 6
+tests (corrected p=0.122).
 
-**Classifier** (logistic regression + random forest, 2,931 events): a random 80/20 split
-scored 52.1% (logistic regression) and 53.8% (random forest) vs. a 50.6% baseline — but a
-random split for time-series data like this risks lookahead bias (a model partly trained on
-*later* events predicting an *earlier* one), the same principle discussed early in this
-project for avoiding it in backtests. **5-fold walk-forward validation** (only ever training
-on chronologically earlier events) gives a materially different, more trustworthy picture:
-49.3% average accuracy for logistic regression and 50.9% for random forest, against a 51.5%
-average baseline — both models sit at or below baseline in nearly every fold. The random-split
-numbers were likely a mild lookahead-bias artifact; the walk-forward result is the one that
-should actually be trusted.
+### Classifier: random split vs. walk-forward
 
-**Pipeline validity check**: raw (non-abnormal) drift tested against SPY's return over the
-same window should come back strongly significant if the pipeline measures things correctly
-(basic market beta). It does, decisively: r = 0.434, p = 1.00 × 10⁻¹³⁵ (n = 2,953).
+Logistic regression and random forest, predicting whether a stock beats the market in the 10
+days after earnings. A random 80/20 split scored 52.1% and 53.8% against a 50.6% baseline, but
+a random split on time-series data like this risks lookahead bias: a model partly trained on
+later events predicting an earlier one. Same principle as avoiding lookahead bias in a trading
+backtest, which came up early on in this project too.
 
-**Event study (cumulative abnormal return)**: rather than only checking fixed 10/20-day
-checkpoints, the average daily abnormal return was computed for every trading day from 10
-days before to 20 days after Day 0, then cumulated. The result is the textbook signature of
-*no drift*: abnormal return spikes sharply exactly on Day 0 (+0.61% mean, vs. ~0.03-0.13% on
-other days) — the market reprices instantly — and the CAR curve is essentially flat for the
-20 days afterward, rather than climbing steadily the way real PEAD would show.
+5-fold walk-forward validation (only ever training on chronologically earlier events) tells a
+different story: 49.3% average accuracy for logistic regression and 50.9% for random forest,
+against a 51.5% average baseline. Both sit at or below baseline in nearly every fold. The
+random-split numbers were probably a mild lookahead artifact; the walk-forward result is the
+one I'd actually trust.
 
-A naive test of "is there ANY positive drift in the 20 days after Day 0" (not conditioned on
-surprise direction) does come back statistically significant on its own (mean +0.58%,
-p=0.0003) — but a **placebo check**, repeated 100 times with different random draws of
-non-earnings days for the same stocks (rather than trusting a single draw, which could just
-be lucky), shows the real result sitting in the *lower half* of the resulting empirical
-distribution: placebo mean +0.78% (range +0.26% to +1.45% across the 100 runs), vs. the real
-+0.58%. The empirical p-value — the fraction of random-day runs with a mean at least as large
-as the real earnings-day result — is **0.860**. That means the apparent post-Day-0 drift isn't
-earnings-specific at all; it's just this stock sample's general tendency to drift upward over
-the study period, and random non-earnings days show it just as much (usually more). Without
-this check, that +0.58% result would have been easy to mistakenly report as evidence for PEAD.
+### Pipeline validity check
 
-**Market model (proper beta-adjusted abnormal returns)**: the "abnormal drift" used everywhere
-above assumes every stock moves 1-for-1 with the market (a simple market-adjusted return).
-The academic standard (the market model, Brown & Warner 1985) is more precise: estimate each
-stock's actual beta from a clean 250-day window *before* the event (with a 30-day buffer so
-the event itself can never leak into the estimate — the same lookahead-bias discipline used
-throughout this project), then measure abnormal return against that stock-specific
-expectation instead of a flat market assumption. Average beta across this sample is **1.13**
-(median 1.09) — these are higher-than-market-sensitivity stocks, which means the simpler
-method was silently crediting some of that generic extra sensitivity to "abnormal" earnings
-movement. Once properly beta-adjusted, the post-Day-0 continuation drift **almost entirely
-disappears**: mean CAR change from Day 0 to Day +20 is -0.065% (t=-0.38, p=0.701) — not
-remotely significant, and the curve is flat-to-slightly-declining after the reaction rather
-than climbing. This is a cleaner, more theoretically correct confirmation of the same
-conclusion the placebo check already reached from a different angle.
+Before trusting a null result, it's worth checking the pipeline can detect a real relationship
+at all. Raw (non-abnormal) drift tested against SPY's return over the same window should come
+back strongly significant, since most stocks move with the broad market. It does: r=0.434,
+p=1.00×10⁻¹³⁵ across all 2,953 events. Good — the null result elsewhere isn't because the
+pipeline is broken.
 
-**Multiple comparison correction**: applied separately to the 8 quintile/tier significance
-tests and the 6 cluster-robust regression tests. Nothing survives correction in either family,
-and this same pattern (one test looks marginally significant in isolation, none survive
-correction) reproduced independently at four different sample sizes as the dataset grew from
-807 to 1,635 to 2,564 to 2,953 events.
+### Event study: cumulative abnormal return, day by day
+
+Instead of only checking fixed 10/20-day checkpoints, I computed the average daily abnormal
+return for every trading day from 10 before to 20 after Day 0, then cumulated it. This is the
+textbook way to visualize an effect like this. The result: abnormal return spikes sharply
+right on Day 0 (+0.61% mean, versus roughly 0.03-0.13% on other days), then the curve goes
+essentially flat for the following 20 days instead of climbing the way real PEAD would show.
+The market reprices instantly here, it doesn't drift.
+
+A raw test of "is there any positive drift in the 20 days after Day 0" (regardless of surprise
+direction) does come back significant on its own: mean +0.58%, p=0.0003. Before trusting that,
+I ran a placebo check — the identical test on random, non-earnings days for the same stocks —
+100 times with different random draws, rather than trusting a single comparison that could
+just be lucky. The real result sits in the lower half of that empirical distribution: placebo
+mean +0.78% (range +0.26% to +1.45% across the 100 runs) versus the real +0.58%. The empirical
+p-value — the share of random-day runs with an effect at least that large — is 0.860. In other
+words, that "significant" drift isn't earnings-specific at all. It's just this stock sample's
+general tendency to drift upward over the period, and random days without any earnings news
+show it just as much, usually more. Without this check I'd have reported +0.58% as evidence
+for PEAD, and I'd have been wrong.
+
+### Market model: proper beta-adjusted abnormal returns
+
+Everywhere above, "abnormal drift" assumes every stock moves 1-for-1 with the market. The
+actual academic standard (the market model, Brown & Warner 1985) is more careful about this:
+estimate each stock's real beta from a clean 250-day window before the event, with a 30-day
+gap so the event itself can never leak into the estimate, then measure abnormal return against
+that stock-specific expectation instead of a flat market assumption.
+
+Average beta across this sample turns out to be 1.13 (median 1.09) — these are
+higher-than-market-sensitivity stocks, which means the simpler method was quietly crediting
+some of that generic extra sensitivity to "abnormal" earnings movement that wasn't really
+about the earnings at all. Once properly beta-adjusted, the post-Day-0 continuation drift
+almost entirely disappears: mean CAR change from Day 0 to Day +20 is -0.065% (p=0.701), nowhere
+close to significant, and the curve actually declines slightly after the reaction instead of
+climbing. This is a cleaner, more theoretically sound confirmation of what the placebo check
+already found a different way.
+
+### Multiple comparison correction
+
+Applied separately to the 8 quintile/tier significance tests and the 6 cluster-robust
+regression tests. Nothing survives correction in either family. The same pattern — one test
+looks marginally significant on its own, nothing survives correction — reproduced
+independently at four different sample sizes as the dataset grew from 807 to 1,635 to 2,564
+to 2,953 events.
 
 ## Interpretation
 
-**No statistically significant relationship was found between earnings surprise size and
-abnormal post-earnings drift, in any tier, using any of six different analytical lenses**
-(bucketed significance test, cluster-robust regression, walk-forward-validated classifier,
-market-beta validity check, event-study CAR with a 100-run placebo comparison, and a proper
-beta-adjusted market-model event study). The coverage hypothesis predicted the surprise-drift
-relationship should strengthen as coverage decreases;
-instead, every tier stayed statistically indistinguishable from zero, and more than tripling
-the sample size (807 → 2,953 events) made estimates converge closer to zero rather than
-revealing a hidden effect — the signature of a genuinely absent relationship rather than an
-underpowered test.
+No statistically significant relationship between earnings surprise size and abnormal
+post-earnings drift, in any tier, across six different analytical lenses: bucketed
+significance testing, cluster-robust regression, a walk-forward-validated classifier, a
+market-beta validity check, an event-study CAR with a 100-run placebo comparison, and a
+proper beta-adjusted market model. The coverage hypothesis (that less-covered stocks should
+show a stronger effect) didn't hold up either — every tier stayed indistinguishable from
+zero, and quadrupling the sample size made the estimates converge closer to zero, not further
+from it. That's the signature of a genuinely absent effect, not an underpowered test.
 
-The event-study placebo check is the single strongest piece of evidence here: it shows that
-even a seemingly "significant" post-earnings pattern can be fully explained by general
-sample-level drift unrelated to earnings at all, and that testing this directly (rather than
-assuming a significant p-value means what it appears to mean) is what separates a credible
-result from a false positive.
+The placebo check is the strongest single piece of evidence here. It shows that even a
+result that looks statistically significant on its own can be fully explained by general
+sample-level drift that has nothing to do with earnings, and that actually testing for that
+directly — instead of assuming a small p-value means what it looks like it means — is what
+separates a credible result from a false positive.
 
 ## Limitations
 
-- Mid/small-cap Day-0 timing uses a "post-market" default rather than confirmed report timing
-  (large-cap uses Alpha Vantage's explicit report-time field where that source was used, but
+- Mid/small-cap Day-0 timing defaults to "post-market" rather than a confirmed report time
+  (large-cap uses Alpha Vantage's actual report-time field where that source was used, but
   falls back to the same default for the 8 tickers sourced via yfinance instead)
-- A handful of originally-targeted small-cap tickers were dropped from the final view due to
-  insufficient historical data density — itself a small, consistent data point about
-  lower-coverage stocks having thinner historical records
+- A handful of originally-targeted small-cap tickers got dropped from the final view for lack
+  of historical data density — itself a small, consistent sign that lower-coverage stocks
+  tend to have thinner historical records
 - The market-model beta estimate needs a clean ~280-day window before each event; 96 of 2,953
-  events (mostly earlier in a ticker's price history) don't have one and are excluded from that
-  specific analysis, though they're included everywhere else
-- Every individual family of tests (quintile buckets, tier correlations, cluster-robust
-  regressions) was corrected for multiple comparisons *within* that family, but this project
-  ran many such families across its lifetime; a maximally strict analysis would correct across
-  all of them jointly. Given every family already came back null, a stricter joint correction
-  would not change the conclusion — but it's worth naming as the more rigorous alternative
+  events (mostly early in a ticker's price history) don't have one and are excluded from just
+  that analysis, though they're included everywhere else
+- Every family of tests here was corrected for multiple comparisons within itself, but this
+  project ran several such families over its lifetime. A maximally strict version would
+  correct across all of them jointly. Since every family already came back null, that stricter
+  correction wouldn't change the conclusion, but it's worth naming as the more rigorous option
 
 ## What this demonstrates
 
-- End-to-end multi-source data pipeline (2 earnings APIs, 2 price APIs), normalized relational
-  schema, Dockerized Postgres, idempotent ingestion with proper error handling (including a
-  real bug caught and fixed: a third-party API silently returning a rate-limit notice with a
-  200 status instead of an error)
-- Linting (`ruff`) wired into CI alongside the test suite
-- A narrative Jupyter notebook (`analysis.ipynb`) with real, pre-executed inline charts and
-  tables, as a readable companion to the pipeline scripts themselves
-- Advanced SQL: layered CTEs, window functions (`LEAD`, `LAG`, rolling `AVG`/`STDDEV_SAMP`
-  with custom frames) for time-series feature engineering
-- A market-adjusted (abnormal return) metric, not just raw price change
-- A specific, falsifiable hypothesis (coverage moderates PEAD strength) tested directly with
-  a purpose-built 3-tier sample, rather than assumed from literature
-- Statistical significance testing and a supervised classifier, both used to cross-check the
-  same conclusion
-- `pytest` integration tests that independently recompute expected drift/volume/volatility
-  values from synthetic fixtures and verify the SQL view matches exactly
-- An interactive Streamlit dashboard for exploring results by tier/sector with a ticker
-  drill-down
-- Data quality checks (OHLC consistency, duplicate detection, referential integrity between
-  tickers and their tier/sector mapping, outlier flagging) run standalone and in CI
-- Continuous integration (GitHub Actions): every push spins up a fresh Postgres instance and
-  runs the full test suite against it
-- Data lineage tracking (`ingested_at` timestamps) on every ingested row
-- A pipeline validity/sanity check (does the methodology detect a known, expected relationship
-  before trusting it on an unknown one) and a multiple-comparison correction that caught what
-  would otherwise have been a reported false positive
-- A robustness check across two different drift horizons (10d and 20d), showing the
-  conclusion isn't an artifact of picking one particular window
-- Cluster-robust regression, with the underlying assumptions checked rather than assumed:
-  diagnosed and fixed an outlier-driven false positive in an unwinsorized first pass, and
-  explicitly flagged when a tier has too few clusters for the correction to be trustworthy
-- A full event-study (cumulative abnormal return) analysis with a placebo control repeated
-  100 times to build an actual empirical null distribution (not trusting one lucky/unlucky
-  random draw) — caught a seemingly significant result that turned out to be a general sample
-  artifact, not a real earnings effect, once compared against that distribution
-- Walk-forward (time-series) cross-validation for the classifier, catching that a naive random
-  80/20 split was likely giving a mild lookahead-bias-inflated result — the same principle
-  discussed early in this project for avoiding it in trading-strategy backtests
-- A proper market-model (beta-adjusted) event study, not just a flat market-adjustment —
-  betas estimated from a pre-event window with a deliberate gap before the event itself, so
-  the event's own reaction can never leak into the estimate, and this more rigorous method
-  produced an even cleaner null result than the simpler one
-- A public, no-database-required dashboard deployment path (static snapshot fallback),
-  verified by deliberately breaking the DB connection and confirming the fallback triggers
-- Finding and fixing a real bug in the project's own test suite: a fixture that assumed a
-  date range would always be free of real data quietly deleted real production data once
-  that assumption stopped holding, after price history was extended further back — caught
-  by comparing before/after row counts rather than trusting "tests passed" at face value,
-  then fixed by backing up and restoring real data instead of relying on the assumption
-- Honest reporting of a null result, with a literature-grounded explanation, rather than
-  overfitting until something "worked"
+The short version: a real multi-source data pipeline, a genuinely rigorous statistical case
+built from six independent angles, and honest reporting of a null result instead of fishing
+until something looked significant.
+
+**Data engineering** — two earnings APIs and two price APIs feeding a normalized Postgres
+schema in Docker, idempotent ingestion with real error handling (including a bug I actually
+hit: a third-party API returning a rate-limit notice with an HTTP 200 instead of an error
+code, so the original version silently treated it as "zero results" instead of failing
+loudly), data quality checks, `ingested_at` lineage tracking, and a SQL view built on layered
+CTEs and window functions rather than pulling everything into Python.
+
+**Statistics** — quintile bucketing with significance testing, cluster-robust regression
+(with the outlier-driven false positive I diagnosed and fixed along the way), a
+market-beta validity check, walk-forward cross-validation instead of a leaky random split,
+Benjamini-Hochberg correction across two separate test families, and an event-study CAR
+analysis with a 100-run placebo control that caught a result that looked real but wasn't.
+
+**Software practices** — a `pytest` suite that independently recomputes expected values from
+synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and the test
+suite both wired into GitHub Actions CI, an interactive Streamlit dashboard with a
+static-snapshot fallback for when there's no live database (verified by deliberately breaking
+the DB connection and confirming it actually falls back), and a narrative Jupyter notebook as
+a readable companion to the pipeline scripts.
+
+**A real bug in the project's own safety net** — the test suite had a fixture that assumed a
+certain date range would always be free of real data. That was true when I wrote it, and
+became false once I extended real price history further back, so running the test suite
+quietly deleted real production data as a side effect. I caught it by comparing row counts
+before and after rather than just trusting "tests passed," restored the data, and rewrote the
+fixture to back up and restore whatever's really there instead of assuming.
 
 ## Running it
 
@@ -274,4 +273,8 @@ python export_snapshot.py                 # refresh the static snapshot for depl
 jupyter nbconvert --to notebook --execute --inplace analysis.ipynb  # rebuild the notebook with fresh outputs
 ```
 
-The dashboard also runs without a database at all, using the committed `snapshot/earnings_drift.csv` as a fallback — this lets anyone clone the repo and run `streamlit run dashboard.py` immediately with zero setup, and is also what would power a public hosted deployment (e.g. Streamlit Community Cloud), since a hosted instance has no access to the local Postgres container.
+The dashboard also runs with no database at all, falling back to the committed
+`snapshot/earnings_drift.csv`. That means anyone can clone this repo and run `streamlit run
+dashboard.py` immediately with zero setup, and it's also what would power a public hosted
+deployment (Streamlit Community Cloud, say), since a hosted instance has no access to the
+local Postgres container.
