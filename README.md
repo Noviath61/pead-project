@@ -324,6 +324,39 @@ bound: if you can't get implied vol priced at least a few multiples over histori
 picking up a genuinely bad number, and this project has no options-chain data to say whether
 real-world IV clears that bar by enough to be a profitable trade net of realistic spreads.
 
+### GARCH(1,1): does a real volatility-forecasting model change the story?
+
+Every volatility number so far uses a 20-day rolling standard deviation as "normal"
+volatility. That's a reasonable, common baseline, but real volatility forecasting almost
+always uses something that captures volatility clustering, the tendency for calm and choppy
+periods to persist, instead of weighting the last 20 days equally.
+`garch_volatility_forecast.py` fits a GARCH(1,1) model (Bollerslev 1986, the standard
+textbook volatility-forecasting model) per ticker and checks whether a genuinely more
+sophisticated model changes the jump-ratio and straddle-pricing conclusions.
+
+One honest caveat up front: the market model and Fama-French sections in this project fit
+only on a clean pre-event window specifically to avoid lookahead bias. Refitting a fresh
+GARCH model before each of ~2,950 individual events would be its own project. This fits one
+GARCH model per ticker on its full available history instead (60 tickers, each fit in well
+under a second), so the fitted parameters carry mild lookahead bias, even though each daily
+forecast itself only uses information through the prior day. Good enough to ask "does a
+smarter model change the conclusion," not a substitute for the point-in-time discipline used
+in the market-model and Fama-French sections.
+
+The two volatility estimates agree in shape (Spearman r=0.893) but aren't the same number.
+GARCH comes out measurably closer to the actual realized move: geometric mean jump ratio
+drops from 1.27x (rolling window) to 1.06x (GARCH), and the breakeven implied-vol multiplier
+for the straddle backtest drops from 2.65x to 2.23x. Both are still statistically real
+(GARCH: t=2.41, p=0.008), just smaller.
+
+![GARCH vs. rolling volatility](charts/garch_volatility_forecast.png)
+
+A genuinely better model gets closer, but doesn't close the gap. That makes sense: neither
+model has any way to know an earnings date is coming, since both are purely backward-looking
+time-series models. That remaining gap is exactly the volatility risk premium options markets
+price in ahead of an earnings date, information a time-series model structurally can't have
+no matter how sophisticated it gets.
+
 ### Does the earnings-day volatility spike actually linger afterward?
 
 One more natural question out of the volatility work above: does the Day-0 spike bleed into
@@ -428,6 +461,10 @@ that existed back to 2006.
   Carlo noise in the interval edges slightly further, though the qualitative pattern (cluster
   CI similar or narrower, not wider, for this particular statistic) already reproduces cleanly
   across different seeds and resample counts
+- The GARCH(1,1) model is fit once per ticker on its full available history rather than
+  point-in-time before each event, unlike the market-model and Fama-French sections, which
+  carefully avoid this. The fitted parameters carry mild lookahead bias as a result, even
+  though the daily forecast itself only conditions on information through the prior day
 
 ## What this demonstrates
 
@@ -454,7 +491,8 @@ backtest with Sharpe ratio and max drawdown instead of just a pooled average ret
 volatility jump analysis (log-scale one-sample t-test) that reframes the whole dataset around
 the question that actually matters for selling options around earnings, an options-pricing
 backtest using the Brenner-Subrahmanyam approximation to convert historical volatility into
-an at-the-money straddle price, a volatility-persistence check on whether the Day-0 spike
+an at-the-money straddle price, a GARCH(1,1) volatility-forecasting model checked against the
+simpler rolling-window estimate, a volatility-persistence check on whether the Day-0 spike
 lingers or reverts, bootstrap confidence intervals comparing naive to cluster-level
 resampling on the headline correlations, and a feature-engineering follow-up feeding the
 volatility work's strongest standalone signal back into the walk-forward classifier to check
@@ -546,6 +584,7 @@ python power_analysis.py                  # was the test even powerful enough to
 python backtest_equity_curve.py           # compounded equity curve, Sharpe ratio, max drawdown
 python volatility_risk_premium.py         # earnings-day move vs. normal-day volatility, by tier
 python straddle_backtest.py               # historical-vol-priced straddle P&L using Brenner-Subrahmanyam
+python garch_volatility_forecast.py       # GARCH(1,1) vs. rolling-window volatility, does it change anything?
 python volatility_crush_check.py          # does the Day-0 vol spike linger, or revert fast?
 python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on the headline correlations
 pytest tests/ -v                          # test suite

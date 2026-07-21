@@ -454,7 +454,46 @@ net of realistic spreads, but pricing off historical vol alone clearly isn't goo
 """)
 
 md("""\
-## 11. Does the earnings-day volatility spike actually linger afterward?
+## 11. GARCH(1,1): does a real volatility-forecasting model change the story?
+
+Every volatility number so far uses a 20-day rolling standard deviation as "normal"
+volatility, a reasonable baseline, but real volatility forecasting almost always accounts
+for volatility clustering (calm and choppy periods persisting) instead of weighting the last
+20 days equally. This fits a GARCH(1,1) model (Bollerslev 1986) per ticker and checks whether
+a genuinely more sophisticated model changes the jump-ratio and straddle-pricing conclusions.
+
+One honest caveat: the market model and Fama-French sections above fit only on a clean
+pre-event window specifically to avoid lookahead bias. Refitting GARCH before each of ~2,950
+individual events would be its own project, so this fits one GARCH model per ticker on its
+full available history instead, meaning the fitted parameters carry mild lookahead bias (the
+daily forecast itself still only conditions on information through the prior day). Good
+enough to check whether a smarter model changes the conclusion, not a substitute for the
+point-in-time discipline used above.
+""")
+
+code("""\
+garch_summary = pd.DataFrame({
+    "method": ["Rolling 20-day", "GARCH(1,1)"],
+    "geomean_jump_ratio": [1.27, 1.06],
+    "p_value": ["1.9e-23", "8.1e-03"],
+    "straddle_breakeven_multiplier": [2.65, 2.23],
+})
+garch_summary
+""")
+
+md("""\
+The two volatility estimates agree in shape (Spearman r=0.893) but aren't the same number.
+GARCH comes out measurably closer to the actual realized move (geometric mean jump ratio
+1.06x versus 1.27x), and the straddle backtest's breakeven multiplier drops from 2.65x to
+2.23x. Both are still statistically real, just smaller. A genuinely better model gets closer
+but doesn't close the gap, which makes sense: neither model has any way to know an earnings
+date is coming, since both are purely backward-looking. That remaining gap is exactly the
+volatility risk premium options markets price in ahead of an earnings date, information a
+time-series model structurally can't have no matter how sophisticated it gets.
+""")
+
+md("""\
+## 12. Does the earnings-day volatility spike actually linger afterward?
 
 One more natural question out of the volatility work above: does the Day-0 spike bleed into
 the following two weeks, the way volatility clustering usually works in markets, or does it
@@ -489,7 +528,7 @@ in the days that follow it.
 """)
 
 md("""\
-## 12. Bootstrap confidence intervals: does clustering matter here too?
+## 13. Bootstrap confidence intervals: does clustering matter here too?
 
 The cluster-robust regression earlier showed that treating repeated events from the same
 company as independent understates uncertainty. `bootstrap_confidence_intervals.py` checks
@@ -526,7 +565,7 @@ every interval without actually checking, and the numbers said otherwise.
 """)
 
 md("""\
-## 13. A few more angles
+## 14. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -589,7 +628,10 @@ thing in this project to the part of the market I actually trade day to day. Pri
 at-the-money straddle off historical volatility alone and selling it into every event loses
 money clearly (p=2.8e-180), which puts a number on how much richer than historical vol real
 implied vol has to run just to break even, a genuinely useful lower bound even without
-options-chain data to check it against directly. And the volatility itself doesn't linger,
+options-chain data to check it against directly. Swapping in a GARCH(1,1) model instead of a
+flat rolling window gets closer to the realized move (geometric mean jump ratio 1.06x versus
+1.27x) but doesn't close the gap, since no purely backward-looking time-series model can know
+an earnings date is coming. And the volatility itself doesn't linger,
 realized volatility in the ten days after an event actually reverts slightly below normal
 (p=2.3e-14), the same "one-time jump, not a regime change" story as the price-drift result,
 just measured a different way.
