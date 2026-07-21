@@ -23,13 +23,14 @@ START_DATE = "2010-01-04"
 
 # Fixed, hand-chosen daily returns (not all identical, so volatility is nonzero
 # and testable). Index 0..24 = 25 trading days before Day 0; 25 = Day 0 itself;
-# 26..35 = 10 trading days after Day 0.
+# 26..35 = 10 trading days after Day 0; 36..45 = days 11-20 after Day 0.
 DAILY_RETURNS = [
     0.01, -0.02, 0.015, 0.005, -0.01, 0.02, -0.015, 0.01, 0.0, -0.005,
     0.012, -0.008, 0.02, -0.01, 0.005, 0.01, -0.02, 0.015, -0.005, 0.008,
     -0.01, 0.02, -0.015, 0.01, 0.0,
     0.03,   # Day 0 "reaction" jump
     0.01, -0.005, 0.02, -0.01, 0.015, -0.008, 0.01, -0.012, 0.005, 0.02,
+    -0.01, 0.008, -0.005, 0.012, -0.008, 0.01, -0.015, 0.02, -0.01, 0.005,
 ]
 
 # A different fixed series for the "market benchmark," so the abnormal-drift
@@ -40,6 +41,7 @@ BENCHMARK_DAILY_RETURNS = [
     0.002, 0.0, 0.001, -0.002, 0.002,
     0.005,
     0.001, 0.0, 0.002, -0.001, 0.001, 0.002, -0.001, 0.001, 0.0, 0.002,
+    -0.001, 0.001, 0.0, 0.002, -0.001, 0.001, -0.002, 0.002, 0.001, 0.0,
 ]
 
 
@@ -146,16 +148,18 @@ def test_drift_and_momentum_match_independent_calculation(synthetic_data):
     expected_momentum = (day0_close - closes[20]) / closes[20] * 100
     expected_drift_5d = (closes[30] - day0_close) / day0_close * 100
     expected_drift_10d = (closes[35] - day0_close) / day0_close * 100
+    expected_drift_20d = (closes[45] - day0_close) / day0_close * 100
 
     with engine.connect() as conn:
         row = conn.execute(
-            text("""SELECT pre_earnings_momentum_pct, drift_5d_pct, drift_10d_pct
+            text("""SELECT pre_earnings_momentum_pct, drift_5d_pct, drift_10d_pct, drift_20d_pct
                      FROM earnings_drift WHERE symbol = :s"""), {"s": TEST_SYMBOL}
         ).fetchone()
 
     assert float(row.pre_earnings_momentum_pct) == pytest.approx(expected_momentum, abs=0.01)
     assert float(row.drift_5d_pct) == pytest.approx(expected_drift_5d, abs=0.01)
     assert float(row.drift_10d_pct) == pytest.approx(expected_drift_10d, abs=0.01)
+    assert float(row.drift_20d_pct) == pytest.approx(expected_drift_20d, abs=0.01)
 
 
 def test_volume_spike_and_volatility_match_independent_calculation(synthetic_data):
@@ -183,17 +187,20 @@ def test_abnormal_drift_subtracts_benchmark_return(synthetic_data):
     closes = synthetic_data["closes"]
     benchmark_closes = synthetic_data["benchmark_closes"]
     day0_close = closes[25]
+    benchmark_day0_close = benchmark_closes[25]
 
-    expected_drift_10d = round((closes[35] - day0_close) / day0_close * 100, 2)
-    expected_benchmark_drift_10d = round(
-        (benchmark_closes[35] - benchmark_closes[25]) / benchmark_closes[25] * 100, 2
-    )
-    expected_abnormal = expected_drift_10d - expected_benchmark_drift_10d
+    def expected_abnormal(offset):
+        drift = round((closes[25 + offset] - day0_close) / day0_close * 100, 2)
+        benchmark_drift = round(
+            (benchmark_closes[25 + offset] - benchmark_day0_close) / benchmark_day0_close * 100, 2
+        )
+        return drift - benchmark_drift
 
     with engine.connect() as conn:
         row = conn.execute(
-            text("""SELECT abnormal_drift_10d_pct
+            text("""SELECT abnormal_drift_10d_pct, abnormal_drift_20d_pct
                      FROM earnings_drift WHERE symbol = :s"""), {"s": TEST_SYMBOL}
         ).fetchone()
 
-    assert float(row.abnormal_drift_10d_pct) == pytest.approx(expected_abnormal, abs=0.05)
+    assert float(row.abnormal_drift_10d_pct) == pytest.approx(expected_abnormal(10), abs=0.05)
+    assert float(row.abnormal_drift_20d_pct) == pytest.approx(expected_abnormal(20), abs=0.05)

@@ -63,15 +63,21 @@ up to 20 years of history where available.
 **Coverage hypothesis test, across all three tiers** (Spearman correlation between surprise
 size and abnormal 10-day drift):
 
-| Tier | n events | n tickers | Spearman r | p-value |
-|---|---|---|---|---|
-| Large-cap | 848 | 12 | -0.006 | 0.872 |
-| Mid-cap | 404 | 10 | -0.007 | 0.883 |
-| Small-cap | 383 | 10 | -0.025 | 0.623 |
+| Tier | Window | n events | n tickers | Spearman r | p-value |
+|---|---|---|---|---|---|
+| Large-cap | 10d | 848 | 12 | -0.006 | 0.872 |
+| Large-cap | 20d | 848 | 12 | 0.023 | 0.504 |
+| Mid-cap | 10d | 404 | 10 | -0.007 | 0.883 |
+| Mid-cap | 20d | 404 | 10 | 0.052 | 0.301 |
+| Small-cap | 10d | 383 | 10 | -0.025 | 0.623 |
+| Small-cap | 20d | 383 | 10 | 0.019 | 0.710 |
 
 With ~2x the sample size of the original pass, the tier-level correlations converged even
 closer to zero rather than revealing a hidden effect — exactly what you'd expect if the true
 relationship is genuinely absent, since more data narrows the estimate around its real value.
+Checking a second, longer drift window (20 trading days, not just 10) rules out that the null
+result is an artifact of picking one particular horizon — every tier stays non-significant at
+both windows.
 
 **Classifier** (logistic regression + random forest, same feature set, 1,635 events, 327 held
 out for testing): logistic regression scored 52.3% accuracy vs. a 50.8% baseline (always guess
@@ -148,6 +154,15 @@ rather than just citing it, and reported what the data actually showed at every 
 - A pipeline validity/sanity check (does the methodology detect a known, expected relationship
   before trusting it on an unknown one) and a multiple-comparison correction that caught what
   would otherwise have been a reported false positive
+- A robustness check across two different drift horizons (10d and 20d), showing the
+  conclusion isn't an artifact of picking one particular window
+- A public, no-database-required dashboard deployment path (static snapshot fallback),
+  verified by deliberately breaking the DB connection and confirming the fallback triggers
+- Finding and fixing a real bug in the project's own test suite: a fixture that assumed a
+  date range would always be free of real data quietly deleted real production data once
+  that assumption stopped holding, after price history was extended further back — caught
+  by comparing before/after row counts rather than trusting "tests passed" at face value,
+  then fixed by backing up and restoring real data instead of relying on the assumption
 - Honest reporting of a null result, with a literature-grounded explanation, rather than
   overfitting until something "worked"
 
