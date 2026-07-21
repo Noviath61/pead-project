@@ -16,16 +16,19 @@ This project asks two questions:
 
 ## Data & Methodology
 
-- **Earnings surprises** (reported EPS vs. estimated EPS, by quarter): Alpha Vantage for the
-  large-cap tier, yfinance for the mid- and small-cap tiers (validated against Alpha Vantage
-  on overlapping data — surprise percentages matched within ~0.2 points)
+- **Earnings surprises** (reported EPS vs. estimated EPS, by quarter): Alpha Vantage for 12 of
+  20 large-cap tickers, yfinance for the rest (8 large-cap tickers plus all mid/small-cap) —
+  yfinance was validated against Alpha Vantage on overlapping data first (surprise percentages
+  matched within ~0.2 points) before being trusted as the source for the remaining tickers,
+  after Alpha Vantage's free-tier key stayed rate-limited far longer than its advertised daily
+  reset (over 24 hours, across two calendar days)
 - **Daily price history**: Financial Modeling Prep for large-caps, yfinance for mid/small-caps
   (FMP's free tier only allows a small whitelist of large-cap symbols)
 - **Market benchmark**: SPY, used to compute *abnormal drift* — a stock's raw price move minus
   the S&P 500's move over the same window, isolating the earnings-specific reaction from
   broad market movement
-- **Universe**: 52 stocks across three market-cap tiers (large/mid/small), each spanning Tech,
-  Financials, Healthcare, Consumer, Defense, and Industrials
+- **Universe**: 60 stocks across three market-cap tiers (20 large/20 mid/20 small), each
+  spanning Tech, Financials, Healthcare, Consumer, Defense, and Industrials
 - **History depth**: price data extends back to 2006 (or IPO date, whichever is later) rather
   than a short recent window — since Alpha Vantage's earnings history already went back to
   1996 for large-caps, extending price coverage unlocked hundreds of already-available
@@ -47,26 +50,26 @@ per ticker — no data duplication, one source of truth per fact.
 
 ## Results
 
-**2,564 earnings events** across 52 tickers (12 large-cap, 20 mid-cap, 20 small-cap), spanning
+**2,953 earnings events** across 60 tickers (20 large-cap, 20 mid-cap, 20 small-cap), spanning
 up to 20 years of history where available.
 
 **Bucketed by surprise quintile (all tiers combined):**
 
 | Surprise bucket | Median surprise | Avg. abnormal drift (10d) | p-value |
 |---|---|---|---|
-| Big miss | -11.8% | +0.33% | 0.316 |
-| Miss | +1.5% | +0.64% | **0.028** |
-| Meet | +7.4% | +0.00% | 0.994 |
-| Beat | +16.9% | +0.19% | 0.566 |
-| Big beat | +50.0% | +0.19% | 0.612 |
+| Big miss | -10.8% | +0.20% | 0.514 |
+| Miss | +1.5% | +0.61% | **0.016** |
+| Meet | +6.5% | +0.00% | 0.983 |
+| Beat | +15.2% | +0.17% | 0.547 |
+| Big beat | +47.3% | +0.19% | 0.579 |
 
 **Coverage hypothesis test** (Spearman correlation between surprise size and abnormal drift,
 by tier, at two drift horizons):
 
 | Tier | Window | n events | n tickers | Spearman r | p-value |
 |---|---|---|---|---|---|
-| Large-cap | 10d | 848 | 12 | -0.006 | 0.872 |
-| Large-cap | 20d | 848 | 12 | 0.023 | 0.504 |
+| Large-cap | 10d | 1,237 | 20 | 0.006 | 0.835 |
+| Large-cap | 20d | 1,237 | 20 | 0.018 | 0.518 |
 | Mid-cap | 10d | 831 | 20 | 0.001 | 0.966 |
 | Mid-cap | 20d | 831 | 20 | 0.046 | 0.186 |
 | Small-cap | 10d | 863 | 20 | -0.021 | 0.531 |
@@ -83,26 +86,33 @@ primary test from the start.
 
 | Tier | Window | n | n tickers (clusters) | Coef | Cluster-robust p | Reliable? | Corrected p |
 |---|---|---|---|---|---|---|---|
-| Large-cap | 10d | 848 | 12 | -0.0022 | 0.578 | No (<20 clusters) | 0.578 |
-| Large-cap | 20d | 848 | 12 | 0.0099 | 0.034 | No (<20 clusters) | 0.103 |
-| Mid-cap | 10d | 831 | 20 | 0.0086 | 0.054 | Yes | 0.109 |
-| Mid-cap | 20d | 831 | 20 | 0.0172 | **0.020** | Yes | 0.103 |
+| Large-cap | 10d | 1,237 | 20 | -0.0023 | 0.603 | Yes | 0.603 |
+| Large-cap | 20d | 1,237 | 20 | 0.0103 | 0.076 | Yes | 0.151 |
+| Mid-cap | 10d | 831 | 20 | 0.0086 | 0.054 | Yes | 0.151 |
+| Mid-cap | 20d | 831 | 20 | 0.0172 | **0.020** | Yes | 0.122 |
 | Small-cap | 10d | 863 | 20 | -0.0039 | 0.365 | Yes | 0.438 |
 | Small-cap | 20d | 863 | 20 | 0.0057 | 0.291 | Yes | 0.436 |
 
-The large-cap tier's cluster-robust p-values are flagged unreliable regardless of their value:
-with only 12 ticker-clusters, cluster-robust standard errors are known to behave erratically
-(the econometric rule of thumb wants 30-50+ clusters). The one borderline mid-cap result
-(p=0.020, with a large-enough 20 clusters to trust) does not survive Benjamini-Hochberg
-correction across all 6 tests (corrected p=0.103).
+Every tier now has a full 20 ticker-clusters (large-cap originally had only 12 — resolved by
+sourcing the remaining 8 tickers' earnings via yfinance once Alpha Vantage's key stayed
+rate-limited past its advertised reset window), so all six results above are reliable. The one
+borderline result (mid-cap 20d, p=0.020) does not survive Benjamini-Hochberg correction across
+all 6 tests (corrected p=0.122).
 
-**Classifier** (logistic regression + random forest, 2,542 events, 509 held out for testing):
-logistic regression scored 49.7% vs. a 50.3% baseline; random forest scored 53.0%. Neither is
-a meaningful, consistent improvement.
+**Classifier** (logistic regression + random forest, 2,931 events): a random 80/20 split
+scored 52.1% (logistic regression) and 53.8% (random forest) vs. a 50.6% baseline — but a
+random split for time-series data like this risks lookahead bias (a model partly trained on
+*later* events predicting an *earlier* one), the same principle discussed early in this
+project for avoiding it in backtests. **5-fold walk-forward validation** (only ever training
+on chronologically earlier events) gives a materially different, more trustworthy picture:
+49.3% average accuracy for logistic regression and 50.9% for random forest, against a 51.5%
+average baseline — both models sit at or below baseline in nearly every fold. The random-split
+numbers were likely a mild lookahead-bias artifact; the walk-forward result is the one that
+should actually be trusted.
 
 **Pipeline validity check**: raw (non-abnormal) drift tested against SPY's return over the
 same window should come back strongly significant if the pipeline measures things correctly
-(basic market beta). It does, decisively: r = 0.431, p = 1.39 × 10⁻¹¹⁶ (n = 2,564).
+(basic market beta). It does, decisively: r = 0.434, p = 1.00 × 10⁻¹³⁵ (n = 2,953).
 
 **Event study (cumulative abnormal return)**: rather than only checking fixed 10/20-day
 checkpoints, the average daily abnormal return was computed for every trading day from 10
@@ -112,30 +122,34 @@ other days) — the market reprices instantly — and the CAR curve is essential
 20 days afterward, rather than climbing steadily the way real PEAD would show.
 
 A naive test of "is there ANY positive drift in the 20 days after Day 0" (not conditioned on
-surprise direction) does come back statistically significant (mean +0.67%, p=0.0002) — but a
-**placebo check** (the same test run on random, non-earnings days for the same stocks) shows
-an even larger, more significant effect (mean +1.23%, p<0.0001). That means the apparent
-post-Day-0 drift isn't earnings-specific at all — it's just this stock sample's general
-tendency to drift upward over the study period, showing up equally (or more) on days with no
-earnings event whatsoever. Without this placebo check, that +0.67% result would have been
-easy to mistakenly report as evidence for PEAD.
+surprise direction) does come back statistically significant on its own (mean +0.58%,
+p=0.0003) — but a **placebo check**, repeated 100 times with different random draws of
+non-earnings days for the same stocks (rather than trusting a single draw, which could just
+be lucky), shows the real result sitting in the *lower half* of the resulting empirical
+distribution: placebo mean +0.78% (range +0.26% to +1.45% across the 100 runs), vs. the real
++0.58%. The empirical p-value — the fraction of random-day runs with a mean at least as large
+as the real earnings-day result — is **0.860**. That means the apparent post-Day-0 drift isn't
+earnings-specific at all; it's just this stock sample's general tendency to drift upward over
+the study period, and random non-earnings days show it just as much (usually more). Without
+this check, that +0.58% result would have been easy to mistakenly report as evidence for PEAD.
 
 **Multiple comparison correction**: applied separately to the 8 quintile/tier significance
 tests and the 6 cluster-robust regression tests. Nothing survives correction in either family,
 and this same pattern (one test looks marginally significant in isolation, none survive
-correction) reproduced independently at three different sample sizes as the dataset grew from
-807 to 1,635 to 2,564 events.
+correction) reproduced independently at four different sample sizes as the dataset grew from
+807 to 1,635 to 2,564 to 2,953 events.
 
 ## Interpretation
 
 **No statistically significant relationship was found between earnings surprise size and
-abnormal post-earnings drift, in any tier, using any of five different analytical lenses**
-(bucketed significance test, cluster-robust regression, supervised classifier, market-beta
-validity check, and event-study CAR with placebo comparison). The coverage hypothesis
-predicted the surprise-drift relationship should strengthen as coverage decreases; instead,
-every tier stayed statistically indistinguishable from zero, and quadrupling the sample size
-(807 → 2,564 events) made estimates converge closer to zero rather than revealing a hidden
-effect — the signature of a genuinely absent relationship rather than an underpowered test.
+abnormal post-earnings drift, in any tier, using any of six different analytical lenses**
+(bucketed significance test, cluster-robust regression, walk-forward-validated classifier,
+market-beta validity check, and event-study CAR with placebo comparison). The coverage
+hypothesis predicted the surprise-drift relationship should strengthen as coverage decreases;
+instead, every tier stayed statistically indistinguishable from zero, and more than tripling
+the sample size (807 → 2,953 events) made estimates converge closer to zero rather than
+revealing a hidden effect — the signature of a genuinely absent relationship rather than an
+underpowered test.
 
 The event-study placebo check is the single strongest piece of evidence here: it shows that
 even a seemingly "significant" post-earnings pattern can be fully explained by general
@@ -146,16 +160,11 @@ result from a false positive.
 ## Limitations
 
 - Mid/small-cap Day-0 timing uses a "post-market" default rather than confirmed report timing
-- Train/test split for the classifier is a simple random 80/20 split, not time-aware; a
-  stricter walk-forward validation would be required before treating any effect as tradeable
-- 8 of the original 20 target large-cap tickers are still missing earnings data (though they
-  do have full price history), blocked by Alpha Vantage's free-tier daily quota
+  (large-cap uses Alpha Vantage's explicit report-time field where that source was used, but
+  falls back to the same default for the 8 tickers sourced via yfinance instead)
 - A handful of originally-targeted small-cap tickers were dropped from the final view due to
   insufficient historical data density — itself a small, consistent data point about
   lower-coverage stocks having thinner historical records
-- Large-cap tier has only 12 ticker-clusters, below the threshold generally considered
-  reliable for cluster-robust inference — flagged explicitly in the results rather than
-  silently trusted
 
 ## What this demonstrates
 
@@ -187,9 +196,13 @@ result from a false positive.
 - Cluster-robust regression, with the underlying assumptions checked rather than assumed:
   diagnosed and fixed an outlier-driven false positive in an unwinsorized first pass, and
   explicitly flagged when a tier has too few clusters for the correction to be trustworthy
-- A full event-study (cumulative abnormal return) analysis with a placebo control — caught
-  a seemingly significant result that turned out to be a general sample artifact, not a real
-  earnings effect, by testing random non-earnings days the same way and comparing
+- A full event-study (cumulative abnormal return) analysis with a placebo control repeated
+  100 times to build an actual empirical null distribution (not trusting one lucky/unlucky
+  random draw) — caught a seemingly significant result that turned out to be a general sample
+  artifact, not a real earnings effect, once compared against that distribution
+- Walk-forward (time-series) cross-validation for the classifier, catching that a naive random
+  80/20 split was likely giving a mild lookahead-bias-inflated result — the same principle
+  discussed early in this project for avoiding it in trading-strategy backtests
 - A public, no-database-required dashboard deployment path (static snapshot fallback),
   verified by deliberately breaking the DB connection and confirming the fallback triggers
 - Finding and fixing a real bug in the project's own test suite: a fixture that assumed a
@@ -211,6 +224,7 @@ Then, with `FMP_API_KEY` and `ALPHAVANTAGE_API_KEY` set in `.env`:
 ```bash
 python ingest.py                          # large-cap tickers
 python ingest_yfinance.py                 # mid/small-cap tickers (no keys needed)
+python backfill_earnings_yfinance.py      # fallback earnings source for any AV-rate-limited tickers (no keys needed)
 python backfill_history.py                # extend price history back to 2006/IPO for everything already loaded
 python data_quality_checks.py             # validate the loaded data
 python eda.py                             # quintile + significance analysis
