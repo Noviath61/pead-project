@@ -1,11 +1,12 @@
 # Post-Earnings Announcement Drift (PEAD) Analysis
 
-I built this to actually test a market anomaly instead of just reading about it. Post-earnings
-announcement drift (PEAD) is the idea that after a company beats or misses earnings, its stock
-keeps drifting in that direction for days or weeks instead of re-pricing instantly. It's a real,
-documented effect in the finance literature, and the literature also says it should be
-strongest in small, under-covered stocks and weakest in mega-caps everyone already watches. So
-I wanted to know if that actually holds up on real data, not just take it on faith.
+I trade stocks and options, and I pay close attention to how prices move around earnings.
+That's what pulled me into post-earnings announcement drift (PEAD): the idea that after a
+company beats or misses earnings, its stock keeps drifting in that direction for days or
+weeks instead of re-pricing instantly. It's a real, documented effect in finance research,
+and the research also says it should be strongest in small, under-covered stocks and weakest
+in mega-caps everyone already watches. I wanted to actually test that myself on real data
+instead of just taking it on faith.
 
 **Quick summary:** tested on 2,953 earnings events across 60 stocks, using six independent
 statistical methods. No significant effect anywhere, and the null result held up (got stronger,
