@@ -69,6 +69,20 @@ change, tier, and sector as features, 807 events across all tiers): logistic reg
 53.1% accuracy vs. a 51.9% baseline (always guess the majority class) — not a meaningful
 improvement. Random forest scored 48.1%, below baseline.
 
+**Pipeline validity check**: before trusting a null result, it's worth asking whether the
+pipeline can detect a real relationship at all. As a sanity check, raw (non-abnormal) drift
+was tested against SPY's return over the same window — stocks are expected to move with the
+broad market (basic market beta), so this should come back strongly significant if the
+pipeline is measuring things correctly. It does: r = 0.423, p = 2.24 × 10⁻³⁶ (n = 808). This
+gives real confidence that the PEAD null result reflects the data, not a broken pipeline.
+
+**Multiple comparison correction**: 8 significance tests were run in total (5 surprise
+buckets + 3 tiers). Run in isolation, the "Meet" bucket's raw p-value (0.022) would have
+looked significant at the standard 0.05 threshold — but after a Benjamini-Hochberg
+false-discovery-rate correction across all 8 tests, its corrected p-value is 0.173, and
+nothing survives correction. This is a concrete illustration of why multiple-comparison
+correction matters: without it, this project would have reported a false positive.
+
 ## Interpretation
 
 **No statistically significant relationship was found between earnings surprise size and
@@ -120,6 +134,9 @@ actually showed.
 - Continuous integration (GitHub Actions): every push spins up a fresh Postgres instance and
   runs the full test suite against it
 - Data lineage tracking (`ingested_at` timestamps) on every ingested row
+- A pipeline validity/sanity check (does the methodology detect a known, expected relationship
+  before trusting it on an unknown one) and a multiple-comparison correction that caught what
+  would otherwise have been a reported false positive
 - Honest reporting of a null result, with a literature-grounded explanation, rather than
   overfitting until something "worked"
 
@@ -138,6 +155,7 @@ python data_quality_checks.py             # validate the loaded data
 python eda.py                             # quintile + significance analysis
 python tier_analysis.py                   # coverage hypothesis test
 python model.py                           # classifier
+python validity_checks.py                 # pipeline sanity check + multiple comparison correction
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard
 ```
