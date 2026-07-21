@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, TimeSeriesSplit
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
@@ -26,6 +26,7 @@ FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 df = pd.read_sql("SELECT * FROM earnings_drift", engine)
 df = df.dropna(subset=FEATURES + ["abnormal_drift_10d_pct"])
 df["target_up"] = (df["abnormal_drift_10d_pct"] > 0).astype(int)
+df = df.sort_values("reported_date").reset_index(drop=True)
 
 X = df[FEATURES]
 y = df["target_up"]
@@ -55,8 +56,37 @@ for name, model in models.items():
     pipeline.fit(X_train, y_train)
     preds = pipeline.predict(X_test)
 
-    print(f"--- {name} ---")
+    print(f"--- {name} (random 80/20 split) ---")
     print(f"Accuracy: {accuracy_score(y_test, preds):.3f}")
     print(confusion_matrix(y_test, preds))
     print(classification_report(y_test, preds, target_names=["down/flat", "up"]))
+    print()
+
+print("=== Walk-forward (time-series) cross-validation ===")
+print("(A random split can leak information: predicting an older event using a model")
+print(" trained partly on LATER events is a form of lookahead bias. Walk-forward validation")
+print(" only ever trains on events that happened chronologically before the ones being")
+print(" predicted - the same principle discussed early on for backtesting trading strategies.)")
+print()
+
+tscv = TimeSeriesSplit(n_splits=5)
+for name, model in models.items():
+    fold_accuracies = []
+    fold_baselines = []
+    for fold, (train_idx, test_idx) in enumerate(tscv.split(X), start=1):
+        X_train_f, X_test_f = X.iloc[train_idx], X.iloc[test_idx]
+        y_train_f, y_test_f = y.iloc[train_idx], y.iloc[test_idx]
+
+        pipeline = Pipeline([("prep", preprocessor), ("model", model)])
+        pipeline.fit(X_train_f, y_train_f)
+        preds_f = pipeline.predict(X_test_f)
+
+        fold_accuracies.append(accuracy_score(y_test_f, preds_f))
+        fold_baselines.append(y_test_f.value_counts(normalize=True).max())
+
+    print(f"--- {name} (5-fold walk-forward) ---")
+    for i, (acc, base) in enumerate(zip(fold_accuracies, fold_baselines), start=1):
+        print(f"  fold {i}: accuracy={acc:.3f}  baseline={base:.3f}")
+    print(f"  average accuracy={sum(fold_accuracies)/len(fold_accuracies):.3f}  "
+          f"average baseline={sum(fold_baselines)/len(fold_baselines):.3f}")
     print()
