@@ -312,6 +312,31 @@ bound: if you can't get implied vol priced at least a few multiples over histori
 picking up a genuinely bad number, and this project has no options-chain data to say whether
 real-world IV clears that bar by enough to be a profitable trade net of realistic spreads.
 
+### Does the earnings-day volatility spike actually linger afterward?
+
+One more natural question out of the volatility work above: does the Day-0 spike bleed into
+the following two weeks, the way volatility clustering usually works in markets, or does it
+snap back to normal almost immediately? The `earnings_drift` view already computes a
+`volatility_change_ratio` column for exactly this (10-day realized volatility after Day 0,
+over the 20-day realized volatility before it), it just hadn't been the headline of any
+script until `volatility_crush_check.py`.
+
+The geometric mean ratio is 0.94, and the median is 0.95, both below 1, and a one-sided test
+on the log ratio confirms it (t=-7.58, p=2.3x10⁻¹⁴). If anything, realized volatility in the
+ten days after an earnings event is slightly *below* the stock's own normal level, not
+elevated. It doesn't depend on the size of the surprise either (Spearman r=0.015 against
+`|surprise %|`, not distinguishable from zero); the reversion looks like a fairly universal
+pattern rather than something proportional to how big the news was.
+
+![Post-earnings volatility mostly reverts](charts/volatility_crush.png)
+
+Combined with the event study (drift is flat after Day 0) and the volatility jump analysis
+(the reaction concentrates almost entirely on Day 0 itself), this is the same "one-time jump,
+not a regime change" story showing up a third way, whether measured as price drift or as
+volatility. For anyone holding a short-vol position around earnings, the practical read is
+that the risk here is concentrated overwhelmingly in the event day itself, not in the days
+that follow it.
+
 ### Bootstrap confidence intervals: does clustering matter here too?
 
 The cluster-robust regression earlier in this project showed that treating repeated events
@@ -417,8 +442,9 @@ backtest with Sharpe ratio and max drawdown instead of just a pooled average ret
 volatility jump analysis (log-scale one-sample t-test) that reframes the whole dataset around
 the question that actually matters for selling options around earnings, an options-pricing
 backtest using the Brenner-Subrahmanyam approximation to convert historical volatility into
-an at-the-money straddle price, and bootstrap confidence intervals comparing naive to
-cluster-level resampling on the headline correlations.
+an at-the-money straddle price, a volatility-persistence check on whether the Day-0 spike
+lingers or reverts, and bootstrap confidence intervals comparing naive to cluster-level
+resampling on the headline correlations.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
@@ -505,6 +531,7 @@ python power_analysis.py                  # was the test even powerful enough to
 python backtest_equity_curve.py           # compounded equity curve, Sharpe ratio, max drawdown
 python volatility_risk_premium.py         # earnings-day move vs. normal-day volatility, by tier
 python straddle_backtest.py               # historical-vol-priced straddle P&L using Brenner-Subrahmanyam
+python volatility_crush_check.py          # does the Day-0 vol spike linger, or revert fast?
 python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on the headline correlations
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)

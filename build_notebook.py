@@ -454,7 +454,42 @@ net of realistic spreads, but pricing off historical vol alone clearly isn't goo
 """)
 
 md("""\
-## 11. Bootstrap confidence intervals: does clustering matter here too?
+## 11. Does the earnings-day volatility spike actually linger afterward?
+
+One more natural question out of the volatility work above: does the Day-0 spike bleed into
+the following two weeks, the way volatility clustering usually works in markets, or does it
+snap back to normal almost immediately? The `earnings_drift` view already computes a
+`volatility_change_ratio` column for this (10-day realized volatility after Day 0, over the
+20-day realized volatility before it).
+""")
+
+code("""\
+import numpy as np
+
+vol_change = df.dropna(subset=["volatility_change_ratio"])["volatility_change_ratio"]
+vol_change = vol_change[vol_change > 0]
+print(f"n = {len(vol_change)}")
+print(f"Mean: {vol_change.mean():.3f}   Median: {vol_change.median():.3f}")
+print(f"Geometric mean: {np.exp(np.log(vol_change).mean()):.3f}")
+pct_elevated = (vol_change > 1).mean() * 100
+print(f"Share of events with elevated post-event volatility (ratio > 1): {pct_elevated:.1f}%")
+""")
+
+md("""\
+Geometric mean 0.94, median 0.95, both below 1, confirmed with a one-sided log-scale t-test
+(t=-7.58, p=2.3e-14). If anything, realized volatility in the ten days after an earnings event
+runs slightly *below* the stock's own normal level, not elevated, and it doesn't depend on how
+big the surprise was (Spearman r=0.015 against |surprise %|, not distinguishable from zero).
+
+Combined with the event study (drift is flat after Day 0) and the volatility jump analysis
+(the reaction concentrates almost entirely on Day 0 itself), this is the same "one-time jump,
+not a regime change" story showing up a third way. For anyone holding a short-vol position
+around earnings, the risk here is concentrated overwhelmingly in the event day itself, not
+in the days that follow it.
+""")
+
+md("""\
+## 12. Bootstrap confidence intervals: does clustering matter here too?
 
 The cluster-robust regression earlier showed that treating repeated events from the same
 company as independent understates uncertainty. `bootstrap_confidence_intervals.py` checks
@@ -491,7 +526,7 @@ every interval without actually checking, and the numbers said otherwise.
 """)
 
 md("""\
-## 12. A few more angles
+## 13. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -546,7 +581,10 @@ thing in this project to the part of the market I actually trade day to day. Pri
 at-the-money straddle off historical volatility alone and selling it into every event loses
 money clearly (p=2.8e-180), which puts a number on how much richer than historical vol real
 implied vol has to run just to break even, a genuinely useful lower bound even without
-options-chain data to check it against directly.
+options-chain data to check it against directly. And the volatility itself doesn't linger,
+realized volatility in the ten days after an event actually reverts slightly below normal
+(p=2.3e-14), the same "one-time jump, not a regime change" story as the price-drift result,
+just measured a different way.
 
 One more honest note: not every extension here confirmed what I expected going in. The
 bootstrap confidence intervals were supposed to show the same "clustering matters" story as
