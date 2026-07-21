@@ -1,22 +1,15 @@
-import os
+from db import get_engine
 import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from arch import arch_model
 from scipy.stats import ttest_1samp
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 warnings.filterwarnings("ignore", category=UserWarning, module="arch")
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 print("=== GARCH(1,1) volatility forecasts vs. the simple rolling-window estimate ===")
 print("(Every volatility number so far, jump_ratio, the straddle backtest, uses a 20-day")

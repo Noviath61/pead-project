@@ -1,18 +1,11 @@
-import os
+from db import get_engine
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_1samp
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 BRENNER_SUBRAHMANYAM_CONST = 0.8
 WING_MULTIPLIER = 3  # max loss capped at 3x the credit received, a representative defined-risk setup

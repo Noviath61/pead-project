@@ -1,16 +1,9 @@
-import os
+from db import get_engine
 import pandas as pd
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 df = pd.read_sql("SELECT * FROM earnings_drift", engine)
 
 print("=== Economic significance: would a naive quintile strategy have made money? ===")

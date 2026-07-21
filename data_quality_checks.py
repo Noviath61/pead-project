@@ -1,15 +1,8 @@
-import os
 import sys
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from db import get_engine
 
-load_dotenv()
-
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 CHECKS = [
     ("no non-positive prices", """

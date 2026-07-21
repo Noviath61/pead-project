@@ -1,19 +1,12 @@
-import os
+from db import get_engine
 import time
 import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 N_BOOT = 5000
 RNG = np.random.default_rng(42)
@@ -28,11 +21,9 @@ print(" tickers instead, so a company's 30-60 quarters of history move together,
 print(" same non-independence tier_analysis.py already had to account for.)")
 print()
 
-
 def spearman_r(x: np.ndarray, y: np.ndarray) -> float:
     rx, ry = rankdata(x), rankdata(y)
     return float(np.corrcoef(rx, ry)[0, 1])
-
 
 df = pd.read_sql("SELECT * FROM earnings_drift", engine)
 

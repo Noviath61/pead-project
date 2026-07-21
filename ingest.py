@@ -3,19 +3,13 @@ import time
 from typing import Any
 
 import requests
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
-
-load_dotenv()
+from sqlalchemy import text
+from db import get_engine
 
 FMP_API_KEY = os.environ["FMP_API_KEY"]
 ALPHAVANTAGE_API_KEY = os.environ["ALPHAVANTAGE_API_KEY"]
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 TICKERS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD", "HOOD", "TSM",
@@ -53,13 +47,11 @@ UPSERT_PRICE = text("""
         volume = EXCLUDED.volume
 """)
 
-
 def to_float_or_none(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
-
 
 def fetch_earnings(symbol: str) -> list[dict[str, Any]]:
     response = requests.get(
@@ -72,14 +64,12 @@ def fetch_earnings(symbol: str) -> list[dict[str, Any]]:
         raise RuntimeError(f"Alpha Vantage did not return earnings for {symbol}: {data}")
     return data["quarterlyEarnings"]
 
-
 def already_loaded(table: str, symbol: str) -> bool:
     with engine.connect() as conn:
         result = conn.execute(
             text(f"SELECT 1 FROM {table} WHERE symbol = :symbol LIMIT 1"), {"symbol": symbol}
         )
         return result.first() is not None
-
 
 def fetch_prices(symbol: str) -> list[dict[str, Any]]:
     response = requests.get(
@@ -88,7 +78,6 @@ def fetch_prices(symbol: str) -> list[dict[str, Any]]:
     )
     response.raise_for_status()
     return response.json()
-
 
 def load_earnings(symbol: str) -> None:
     rows = fetch_earnings(symbol)
@@ -107,7 +96,6 @@ def load_earnings(symbol: str) -> None:
             })
     print(f"  earnings: {len(rows)} rows")
 
-
 def load_prices(symbol: str) -> None:
     rows = fetch_prices(symbol)
     with engine.begin() as conn:
@@ -122,7 +110,6 @@ def load_prices(symbol: str) -> None:
                 "volume": row["volume"],
             })
     print(f"  prices: {len(rows)} rows")
-
 
 if __name__ == "__main__":
     for symbol in TICKERS:

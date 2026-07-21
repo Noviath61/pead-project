@@ -1,18 +1,11 @@
-import os
+from db import get_engine
 import pandas as pd
 import statsmodels.api as sm
-from dotenv import load_dotenv
 from scipy import stats
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 OFFSET_BEFORE = 10
 OFFSET_AFTER = 20
@@ -39,7 +32,6 @@ by_symbol = {s: g.reset_index(drop=True) for s, g in prices.groupby("symbol")}
 factors = pd.read_sql("SELECT * FROM ff_factors ORDER BY date", engine)
 factors_by_date = factors.set_index("date")
 
-
 def estimate_ff_loadings(sdf, day0_idx):
     est_end = day0_idx - OFFSET_BEFORE - GAP_BEFORE_EVENT
     est_start = est_end - ESTIMATION_WINDOW
@@ -54,7 +46,6 @@ def estimate_ff_loadings(sdf, day0_idx):
     X = sm.add_constant(window[["mkt_rf", "smb", "hml"]])
     model = sm.OLS(excess_return, X).fit()
     return model.params
-
 
 records = []
 skipped = 0

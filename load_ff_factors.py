@@ -1,19 +1,12 @@
 import io
-import os
 import zipfile
 
 import pandas as pd
 import requests
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from db import get_engine
 
-load_dotenv()
-
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 FF_URL = (
     "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
@@ -26,7 +19,6 @@ UPSERT_FACTOR = text("""
     ON CONFLICT (date) DO UPDATE SET
         mkt_rf = EXCLUDED.mkt_rf, smb = EXCLUDED.smb, hml = EXCLUDED.hml, rf = EXCLUDED.rf
 """)
-
 
 def fetch_factors() -> pd.DataFrame:
     response = requests.get(FF_URL, timeout=30)
@@ -41,7 +33,6 @@ def fetch_factors() -> pd.DataFrame:
     for col in ["mkt_rf", "smb", "hml", "rf"]:
         df[col] = pd.to_numeric(df[col], errors="coerce") / 100
     return df.dropna()
-
 
 if __name__ == "__main__":
     factors = fetch_factors()

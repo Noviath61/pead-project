@@ -1,7 +1,5 @@
-import os
+from db import get_engine
 import pandas as pd
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -11,13 +9,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 NUMERIC_FEATURES = [
     "surprise_percentage", "pre_earnings_momentum_pct", "volume_spike_ratio", "volatility_change_ratio",

@@ -1,17 +1,9 @@
-import os
+from db import get_engine
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 from scipy import stats
 
-load_dotenv()
-
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 OFFSET_BEFORE = 10
 OFFSET_AFTER = 20
@@ -113,7 +105,6 @@ for symbol, ev_group in events.groupby("symbol"):
     ])
     eligible_by_symbol[symbol] = (sdf, eligible, len(ev_group))
 
-
 def run_one_placebo(rng):
     placebo_records_run = []
     for symbol, (sdf, eligible, n_needed) in eligible_by_symbol.items():
@@ -128,7 +119,6 @@ def run_one_placebo(rng):
             valid = stock_rets.notna() & spy_rets.notna()
             placebo_records_run.append(((stock_rets[valid] - spy_rets[valid]) * 100).sum())
     return placebo_records_run
-
 
 placebo_run_means = []
 for run in range(N_PLACEBO_RUNS):

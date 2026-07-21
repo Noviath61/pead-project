@@ -1,12 +1,8 @@
-import os
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 from scipy import stats
-
-load_dotenv()
+from db import get_engine
 
 st.set_page_config(page_title="PEAD Analysis", layout="wide")
 
@@ -17,11 +13,7 @@ SNAPSHOT_PATH = "snapshot/earnings_drift.csv"
 @st.cache_data
 def load_data():
     try:
-        db_url = (
-            f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-            f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-        )
-        engine = create_engine(db_url)
+        engine = get_engine()
         return pd.read_sql("SELECT * FROM earnings_drift", engine), "live database"
     except Exception:
         df = pd.read_csv(SNAPSHOT_PATH, parse_dates=["reported_date", "day0_date"])

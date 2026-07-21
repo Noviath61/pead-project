@@ -1,16 +1,9 @@
 import os
+from db import get_engine
 import pandas as pd
 import matplotlib.pyplot as plt
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
-load_dotenv()
-
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 os.makedirs("charts", exist_ok=True)
 plt.rcParams["figure.figsize"] = (8, 4)

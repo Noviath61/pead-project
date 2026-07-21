@@ -538,7 +538,10 @@ predict direction (it doesn't, honestly reported either way).
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
 type checking both wired into CI alongside the test suite, a `Makefile` for the common
 commands, a Streamlit dashboard with a static-snapshot fallback for when there's no live
-database, and a narrative Jupyter notebook as a companion to the pipeline scripts.
+database, a narrative Jupyter notebook as a companion to the pipeline scripts, and a shared
+`db.py` module (`get_engine()`) that the 25+ analysis scripts now all import instead of each
+repeating its own copy of the same connection-string boilerplate, a straightforward DRY
+cleanup that got more worth doing as the script count grew past two dozen.
 
 **A bug in the project's own safety net**: the test suite had a fixture that assumed a date
 range would always be free of real data. True when I wrote it, false once I extended real

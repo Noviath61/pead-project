@@ -1,19 +1,12 @@
-import os
+from db import get_engine
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_1samp, spearmanr
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 print("=== Volatility crush: does the earnings-day spike actually persist afterward? ===")
 print("(volatility_risk_premium.py showed Day 0 itself moves several times a normal day.")

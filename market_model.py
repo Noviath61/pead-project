@@ -1,16 +1,8 @@
-import os
+from db import get_engine
 import pandas as pd
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 from scipy import stats
 
-load_dotenv()
-
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 
 OFFSET_BEFORE = 10
 OFFSET_AFTER = 20
@@ -31,7 +23,6 @@ by_symbol = {symbol: group.reset_index(drop=True) for symbol, group in prices.gr
 spy_df = by_symbol["SPY"]
 spy_by_date = spy_df.set_index("date")["daily_return"]
 
-
 def estimate_beta(sdf, day0_idx):
     """OLS beta/alpha from a clean pre-event window, ending well before the event window starts."""
     est_end = day0_idx - OFFSET_BEFORE - GAP_BEFORE_EVENT
@@ -44,7 +35,6 @@ def estimate_beta(sdf, day0_idx):
         return None
     slope, intercept, r, p, se = stats.linregress(merged["daily_return_spy"], merged["daily_return"])
     return intercept, slope
-
 
 records = []
 skipped_no_estimation_window = 0

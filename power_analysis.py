@@ -1,18 +1,11 @@
-import os
+from db import get_engine
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
 
 pd.set_option("display.width", 200)
-load_dotenv()
 
-DB_URL = (
-    f"postgresql+psycopg2://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-    f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
-)
-engine = create_engine(DB_URL)
+engine = get_engine()
 df = pd.read_sql("SELECT * FROM earnings_drift", engine)
 
 print("=== Power analysis: was this test even capable of detecting a real effect? ===")
@@ -27,12 +20,10 @@ POWER = 0.80
 Z_ALPHA = norm.ppf(1 - ALPHA / 2)
 Z_BETA = norm.ppf(POWER)
 
-
 def min_detectable_r(n):
     """Fisher z-transform approximation for the minimum |r| detectable at the given power."""
     z_r = (Z_ALPHA + Z_BETA) / (n - 3) ** 0.5
     return float(np.tanh(z_r))
-
 
 rows = []
 for tier in ["large", "mid", "small"]:
