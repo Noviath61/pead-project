@@ -31,6 +31,8 @@ pipeline:
 	python economic_significance.py
 	python survivorship_check.py
 	python power_analysis.py
+	python backtest_equity_curve.py
+	python volatility_risk_premium.py
 
 queries:
 	docker exec -i pead-project-db-1 psql -U pead_user -d pead < queries.sql

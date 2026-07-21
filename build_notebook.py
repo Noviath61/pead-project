@@ -22,9 +22,11 @@ reprice instantly and move on? And is that effect actually stronger in smaller,
 less-covered stocks, the way the literature claims?
 
 This notebook walks through what I found: 2,953 earnings events across 60 stocks (20
-large/20 mid/20 small-cap), tested six different ways. `README.md` in this repo has the
-full methodology writeup; this notebook is more of a results tour, with the actual charts
-and tables rendered inline so you don't have to run anything to see them.
+large/20 mid/20 small-cap), tested nearly a dozen different ways, plus a separate look at
+earnings-day volatility that's closer to how I actually trade around these dates.
+`README.md` in this repo has the full methodology writeup; this notebook is more of a
+results tour, with the actual charts and tables rendered inline so you don't have to run
+anything to see them.
 """)
 
 code("""\
@@ -313,7 +315,114 @@ Even the most sophisticated model I tried agrees with everything else here.
 """)
 
 md("""\
-## 8. A few more angles
+## 8. A real equity curve, not just a pooled average
+
+The naive strategy check above (long "big beat", short "big miss") is a single pooled number
+across all 1,182 qualifying trades. That hides what actually matters if you traded this
+through time: does the account survive, and what does the ride look like along the way?
+`backtest_equity_curve.py` sequences every trade by its actual Day-0 date and compounds a real
+equity curve instead of averaging.
+
+Worth mentioning honestly: the first version of this used a plain cumulative sum of trade
+returns, which produced a max drawdown of -494%, impossible for real capital without leverage.
+Switching to proper compounding (`(1 + return).cumprod()`) fixed the math, but then the
+corrected curve still hit exactly -100%, a full wipeout, because it modeled one trade betting
+the entire account in sequence with zero diversification. Sizing each trade at a fixed 10% of
+capital instead (a stand-in for a book holding several positions at once) removes that
+artifact and produces a number that's actually readable.
+""")
+
+code("""\
+ROUND_TRIP_COST_PCT = 0.40
+POSITION_SIZE_FRACTION = 0.10
+
+bt_df = df.dropna(subset=["surprise_percentage", "abnormal_drift_10d_pct"]).copy()
+bt_df["surprise_quintile"] = pd.qcut(
+    bt_df["surprise_percentage"], 5,
+    labels=["1: Big miss", "2: Miss", "3: Meet", "4: Beat", "5: Big beat"],
+)
+
+longs = bt_df[bt_df["surprise_quintile"] == "5: Big beat"].copy()
+longs["trade_return_pct"] = longs["abnormal_drift_10d_pct"] - ROUND_TRIP_COST_PCT
+shorts = bt_df[bt_df["surprise_quintile"] == "1: Big miss"].copy()
+shorts["trade_return_pct"] = -shorts["abnormal_drift_10d_pct"] - ROUND_TRIP_COST_PCT
+
+trades = pd.concat([longs, shorts]).sort_values("day0_date").reset_index(drop=True)
+trades["wealth_index"] = (1 + trades["trade_return_pct"] / 100 * POSITION_SIZE_FRACTION).cumprod()
+
+n_trades = len(trades)
+span_years = (trades["day0_date"].max() - trades["day0_date"].min()).days / 365.25
+trades_per_year = n_trades / span_years
+sharpe = (trades["trade_return_pct"].mean() / trades["trade_return_pct"].std()) * (trades_per_year ** 0.5)
+running_max = trades["wealth_index"].cummax()
+max_drawdown = ((trades["wealth_index"] / running_max - 1) * 100).min()
+win_rate = (trades["trade_return_pct"] > 0).mean() * 100
+total_return_pct = (trades["wealth_index"].iloc[-1] - 1) * 100
+
+print(f"Trades: {n_trades}, spanning {span_years:.1f} years ({trades_per_year:.0f}/year)")
+print(f"Annualized Sharpe ratio: {sharpe:.2f}")
+print(f"Max drawdown: {max_drawdown:.1f}%")
+print(f"Win rate: {win_rate:.1f}%")
+print(f"Total compounded return: {total_return_pct:+.1f}%")
+
+fig, ax = plt.subplots()
+ax.plot(trades["day0_date"], trades["wealth_index"], color="#c0392b", linewidth=1)
+ax.axhline(1.0, color="black", linewidth=0.8, label="Starting capital")
+ax.set_ylabel("Wealth index (start = 1.0)")
+ax.set_title(f"Equity curve (Sharpe={sharpe:.2f}, max drawdown={max_drawdown:.1f}%)")
+ax.legend()
+plt.tight_layout()
+plt.show()
+""")
+
+md("""\
+Sharpe ratio comes out negative (-0.36), with a -41% max drawdown over 19.7 years and a
+47.5% win rate. A real tradeable long-short strategy generally wants a Sharpe comfortably
+above 1.0. This isn't close, on a risk-adjusted basis just like everywhere else.
+""")
+
+md("""\
+## 9. Volatility around earnings: what actually matters for selling options
+
+Everything above asks whether the *direction* of a surprise predicts what happens next, the
+PEAD question. That's not, though, the question that actually matters when selling calls or
+puts around an earnings date, which is about how much the stock moves on the day itself,
+regardless of direction. `volatility_risk_premium.py` measures that: for every event, it
+compares the size of the Day-0 move to that same stock's own trailing 20-day normal daily
+move.
+
+There's no options-chain data in this project, so implied volatility itself isn't measurable
+here. What is measurable from price data already in the database is the realized side: the
+earnings-day move averaged 2.37x a normal day for that stock (1.27x at the geometric mean,
+the fairer summary given how right-skewed this ratio is), beating a normal day outright 61.6%
+of the time, confirmed with a one-sided test on the log ratio (t=9.99, p=1.9e-23). Broken out
+by tier, the jump is biggest in small-caps and smallest in large-caps, the same coverage
+pattern as everywhere else in this project, just seen through a different lens.
+""")
+
+code("""\
+vol_by_tier = pd.DataFrame({
+    "tier": ["large", "mid", "small"],
+    "n_events": [1243, 835, 886],
+    "mean_jump_ratio": [2.21, 2.34, 2.62],
+    "median_jump_ratio": [1.45, 1.45, 1.55],
+})
+vol_by_tier
+""")
+
+md("""\
+This is exactly why options carry elevated implied volatility going into an earnings date:
+the market is pricing in that a normal day badly understates what's coming. Whether that
+elevated IV is priced too rich on average is a separate question this project can't answer
+without real options data. But the PEAD result above is still relevant context for anyone
+selling premium here: since drift after Day 0 is statistically indistinguishable from zero,
+the earnings-day move behaves like a one-time jump rather than the start of a trend, which is
+the cleaner setup for a defined-risk premium-selling trade than one where direction tends to
+keep going afterward.
+""")
+
+md("""\
+## 10. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -354,11 +463,17 @@ No statistically significant relationship between earnings surprise size and abn
 post-earnings drift, in any tier, across every angle I tried: bucketed significance
 testing, cluster-robust regression, a walk-forward-validated classifier, a market-beta
 validity check, an event-study CAR with a 100-run placebo comparison, a beta-adjusted
-market model, a full Fama-French 3-factor model, a sector-level cut, alternate signals,
-economic significance, survivorship bias, and a formal power analysis. The coverage
-hypothesis didn't hold up either. Every tier stayed statistically indistinguishable from
-zero, and the estimates converged closer to zero, not further from it, as the sample grew
-from 807 to 2,953 events.
+market model, a full Fama-French 3-factor model, a compounded equity-curve backtest, a
+sector-level cut, alternate signals, economic significance, survivorship bias, and a formal
+power analysis. The coverage hypothesis didn't hold up either. Every tier stayed statistically
+indistinguishable from zero, and the estimates converged closer to zero, not further from it,
+as the sample grew from 807 to 2,953 events.
+
+Separately from PEAD, the volatility jump analysis found something that is real and
+statistically strong: earnings-day moves run several times a normal trading day, more so in
+less-covered stocks. That's not a PEAD signal, it's the actual empirical basis for why options
+carry elevated implied volatility into an earnings date in the first place, and the closest
+thing in this project to the part of the market I actually trade day to day.
 
 Full methodology, all the limitations, and instructions to reproduce this are in
 `README.md`.

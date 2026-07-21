@@ -8,12 +8,15 @@ and the research also says it should be strongest in small, under-covered stocks
 in mega-caps everyone already watches. I wanted to actually test that myself on real data
 instead of just taking it on faith.
 
-**Quick summary:** tested on 2,953 earnings events across 60 stocks, using a dozen independent
-statistical methods, from simple bucketing up to a full Fama-French 3-factor model. No
-significant effect anywhere, and the null result held up (got stronger,
-actually) as the sample grew from 807 to 2,953 events. Along the way I caught two real bugs:
-one where my own test suite quietly deleted real production data, and one where an
-unwinsorized regression produced a false-positive result that a placebo check exposed.
+**Quick summary:** tested on 2,953 earnings events across 60 stocks, using over a dozen
+independent statistical methods, from simple bucketing up to a full Fama-French 3-factor model
+and a compounded equity-curve backtest. No significant effect anywhere, and the null result
+held up (got stronger, actually) as the sample grew from 807 to 2,953 events. Along the way I
+caught several real bugs: my own test suite quietly deleting real production data, an
+unwinsorized regression producing a false positive that a placebo check exposed, a Postgres
+NaN-sorting bug that corrupted raw SQL queries, and a naive backtest that mathematically wiped
+out a portfolio because of unrealistic position sizing, not because of anything about the
+strategy itself.
 
 See [`analysis.ipynb`](analysis.ipynb) for a narrative version with charts rendered inline.
 
@@ -213,6 +216,74 @@ only +0.06% before any trading costs at all, and about -0.34% after a conservati
 round-trip cost assumption per leg. Not tradeable by any standard, on top of never being
 statistically significant to begin with.
 
+### A real equity curve, not a pooled average
+
+The naive strategy above is a single pooled number across all 1,182 qualifying trades, which
+hides what actually matters if you traded this through time: does it blow up, and by how much,
+along the way? `backtest_equity_curve.py` sequences every trade by its actual Day-0 date and
+builds a proper compounded equity curve instead of a spreadsheet-style average.
+
+First pass at this used a plain cumulative sum of percentage returns, which produced a max
+drawdown of -494%. That number is impossible for real capital (you can't lose more than
+everything without leverage), which was the tell that a raw cumsum is the wrong way to
+compound sequential returns. Switching to `(1 + return) .cumprod()` fixed the math, but then
+surfaced a second, more interesting problem: modeled as one trade betting the full account
+in sequence, the corrected equity curve still hit exactly -100%, a total wipeout. That's not
+a finding about PEAD, it's what happens to any strategy, good or bad, if you bet the whole
+account on one position with no diversification. Sizing each trade at 10% of capital (a
+reasonable stand-in for a book holding several positions at once) removes that artifact and
+gives a number that actually means something:
+
+| Metric | Value |
+|---|---|
+| Trades | 1,182 (591 long, 591 short) |
+| Span | 19.7 years, ~60 trades/year |
+| Mean return per trade (net of cost) | -0.37% |
+| Annualized Sharpe ratio | -0.36 |
+| Max drawdown | -41.1% |
+| Win rate | 47.5% |
+| Total compounded return | -37.6% |
+
+![Long-short equity curve](charts/equity_curve.png)
+
+A tradeable long-short strategy generally wants a Sharpe ratio comfortably above 1.0. This
+one's negative, which lines up with everything else in this project: no statistical edge,
+no economic edge, and now no risk-adjusted edge either.
+
+### Volatility around earnings: the part that actually matters for selling options
+
+Everything so far asks whether the *direction* of a surprise predicts what happens next. That's
+the PEAD question. It's not, though, the question I actually care about when I'm selling calls
+or puts around an earnings date, which is really about how much the stock moves on the day
+itself, not which way. `volatility_risk_premium.py` measures that directly: for every event,
+it compares the size of the Day-0 move to that stock's own trailing 20-day normal daily move.
+
+This project has no options-chain data, so it can't measure implied volatility directly.
+What it can measure, from price data already sitting in the database, is the realized side:
+the earnings-day move was on average 2.37x a normal day for that same stock (1.27x at the
+geometric mean, which is the fairer summary given how right-skewed the ratio is), and beat a
+normal day outright 61.6% of the time. A one-sided test on the log ratio confirms this isn't
+noise (t=9.99, p=1.9x10⁻²³). Broken out by tier, the jump is largest in small-caps (2.62x
+mean) and smallest in large-caps (2.21x), the same coverage pattern that shows up everywhere
+else in this project, just measured through a completely different lens.
+
+| Tier | n events | Mean jump ratio | Median jump ratio |
+|---|---|---|---|
+| Large-cap | 1,243 | 2.21x | 1.45x |
+| Mid-cap | 835 | 2.34x | 1.45x |
+| Small-cap | 886 | 2.62x | 1.55x |
+
+![Earnings-day volatility jump](charts/volatility_risk_premium.png)
+
+This is exactly why options carry elevated implied volatility going into an earnings date,
+the market is pricing in that a normal day's volatility badly understates what's coming. It
+doesn't tell me whether that elevated IV is priced *too* high on average, that's a separate
+question about actual option prices this project can't answer without options data. But the
+PEAD result above is still relevant context for anyone selling premium here: since the drift
+after Day 0 is statistically indistinguishable from zero, the earnings-day move behaves like a
+one-time jump rather than the start of a multi-day trend, which is the cleaner setup for a
+defined-risk premium-selling trade than one where direction tends to keep going afterward.
+
 ## Interpretation
 
 No significant relationship between surprise size and abnormal drift, in any tier, across
@@ -248,6 +319,13 @@ that existed back to 2006.
   version would correct across all families run over the project's lifetime jointly. Since
   every family already came back null, that wouldn't change the conclusion, but it's worth
   naming as the more rigorous option
+- The equity-curve backtest treats every trade as sequential and independently sized at 10% of
+  capital; it doesn't model overlapping positions (multiple earnings events open at once), which
+  a fully realistic backtest of a real trading book would need to handle
+- The volatility jump analysis measures realized moves only. There's no options-chain data in
+  this project, so it can't say anything directly about whether implied volatility is actually
+  overpriced relative to the realized jump, only that the realized jump itself is large and
+  statistically real
 
 ## What this demonstrates
 
@@ -267,9 +345,12 @@ test families (tier, sector, and cluster-robust), an event-study CAR with a 100-
 control that caught a result that looked real but wasn't, a naive trading strategy priced
 against realistic transaction costs to separate statistical from economic significance, a
 survivorship-bias check quantifying why the sample drifts upward even on random days, a
-formal power analysis showing the null result isn't just an underpowered test, and a
-Fama-French 3-factor model using real factor data pulled from Ken French's public library,
-the same technique used in actual academic asset-pricing research.
+formal power analysis showing the null result isn't just an underpowered test, a Fama-French
+3-factor model using real factor data pulled from Ken French's public library, the same
+technique used in actual academic asset-pricing research, a properly compounded equity-curve
+backtest with Sharpe ratio and max drawdown instead of just a pooled average return, and a
+volatility jump analysis (log-scale one-sample t-test) that reframes the whole dataset around
+the question that actually matters for selling options around earnings.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
@@ -297,6 +378,16 @@ naive SQL query against the same data. Fixed at the source in `ingest_yfinance.p
 abs-value-denominator convention their correct rows already follow), added a dedicated
 data-quality check for literal NaN values, and reran the full pipeline to confirm every
 number in this README already accounted for it correctly.
+
+**A backtest that wiped itself out, and why that wasn't actually a finding**: the first
+version of `backtest_equity_curve.py` used a plain running sum of trade returns, which produced
+a max drawdown of -494%, mathematically impossible for real capital without leverage. Fixing
+that with proper compounding (`cumprod`) surfaced a second issue underneath it: modeled as one
+trade betting the full account in sequence, the corrected curve still hit exactly -100%. That's
+not evidence the strategy is uniquely terrible, it's what any sequence of trades does to a
+single undiversified account, good strategy or bad. Sizing each trade at a fixed 10% of capital
+removed the artifact and left a result (Sharpe -0.36, max drawdown -41%) that's actually
+readable, and still consistent with the null finding everywhere else in this project.
 
 ## Running it
 
@@ -330,6 +421,8 @@ python signal_analysis.py                 # volume spike and volatility change a
 python economic_significance.py           # naive strategy priced against trading costs
 python survivorship_check.py              # quantifies the sample's survivorship bias
 python power_analysis.py                  # was the test even powerful enough to find something?
+python backtest_equity_curve.py           # compounded equity curve, Sharpe ratio, max drawdown
+python volatility_risk_premium.py         # earnings-day move vs. normal-day volatility, by tier
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
