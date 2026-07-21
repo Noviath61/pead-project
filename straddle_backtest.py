@@ -117,6 +117,21 @@ print(" specific proxy trade worse, i.e. the historical-vol price under-covers e
 print(" events where the reaction is biggest, which is the events that hurt most to be wrong on.)")
 print()
 
+by_sector = df.groupby("sector")[["pnl_pct"]].agg(["count", "mean"])
+by_sector.columns = ["n", "mean_pnl_pct"]
+win_rate_by_sector = df.groupby("sector").apply(
+    lambda g: (g["pnl_pct"] > 0).mean() * 100, include_groups=False
+)
+by_sector["win_rate_pct"] = win_rate_by_sector.round(1)
+by_sector = by_sector.sort_values("mean_pnl_pct")
+print("By sector:")
+print(by_sector.round(2).to_string())
+print("Tech is the worst sector to sell this trade into by a wide margin (biggest jump ratio,")
+print("see volatility_risk_premium.py), while Defense is close to a coin flip, roughly")
+print("breakeven on both P&L and win rate. Same sector pattern as the jump ratio, seen from")
+print("the P&L side instead of the volatility side.")
+print()
+
 print("At a price set only by trailing historical volatility, this loses money on average")
 print(f"({mean_pnl:+.2f}% per trade, p={p_one_sided:.1e}), and would need implied vol priced at roughly")
 print(f"{breakeven_multiplier:.1f}x the trailing historical level just to break even. That's actually in the")

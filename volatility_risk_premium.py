@@ -111,6 +111,15 @@ print("(A bigger earnings surprise should coincide with a bigger reaction - this
 print(" that the jump ratio is measuring something real and not noise.)")
 print()
 
+by_sector = df.groupby("sector")["jump_ratio"].agg(["count", "mean", "median"]).round(2)
+by_sector = by_sector.sort_values("mean", ascending=False)
+print("By sector (a dimension the tier cut can't see, since tiers mix all six sectors together):")
+print(by_sector.to_string())
+print("Tech runs the hottest by a wide margin, and Defense is the one sector where the Day-0")
+print("move doesn't even reliably beat a normal day. That's a real, sector-specific pattern,")
+print("not just tier or coverage effects wearing a different hat.")
+print()
+
 print("None of this measures implied volatility, since there's no options-chain data in this")
 print("project. What it shows is the realized side of the trade: earnings days move several")
 print(f"times a normal day ({geo_mean_ratio:.1f}x on a typical event, geometric mean), and that gap is")

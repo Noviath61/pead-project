@@ -290,6 +290,23 @@ else in this project, just measured through a completely different lens.
 
 ![Earnings-day volatility jump](charts/volatility_risk_premium.png)
 
+Sector is a dimension the tier cut can't see, since every tier mixes all six sectors
+together. Cutting the same jump ratio by sector instead turns up something tier alone
+hides:
+
+| Sector | n events | Mean jump ratio |
+|---|---|---|
+| Tech | 942 | 3.23x |
+| Healthcare | 389 | 2.42x |
+| Consumer | 617 | 2.19x |
+| Industrials | 256 | 1.87x |
+| Financials | 551 | 1.85x |
+| Defense | 196 | 0.96x |
+
+Tech runs the hottest by a wide margin, more than double most other sectors. Defense is the
+one sector where the Day-0 move doesn't even reliably beat a normal trading day. That's a
+real, sector-specific pattern, not tier or coverage effects wearing a different hat.
+
 This is exactly why options carry elevated implied volatility going into an earnings date,
 the market is pricing in that a normal day's volatility badly understates what's coming. It
 doesn't tell me whether that elevated IV is priced *too* high on average, that's a separate
@@ -313,6 +330,22 @@ small -3.14%). Implied vol would need to run at roughly 2.6x the trailing histor
 just for this to break even on average.
 
 ![Historical-vol-priced straddle P&L](charts/straddle_backtest.png)
+
+By sector, the same pattern from the jump ratio shows up on the P&L side:
+
+| Sector | n events | Mean P&L | Win rate |
+|---|---|---|---|
+| Tech | 946 | -4.80% | 21.0% |
+| Healthcare | 390 | -2.90% | 34.9% |
+| Consumer | 622 | -2.48% | 37.3% |
+| Industrials | 258 | -1.75% | 36.4% |
+| Financials | 552 | -1.74% | 31.0% |
+| Defense | 196 | -0.13% | 51.0% |
+
+Tech is the worst sector to sell this trade into by a wide margin, the same sector with the
+biggest jump ratio above. Defense comes out close to a coin flip, roughly breakeven on both
+P&L and win rate, the same sector where the jump ratio barely cleared a normal trading day.
+Same underlying pattern, seen from the volatility side and the P&L side.
 
 That's not a real counterexample to selling options for a living, and I want to be clear
 about why. This price is deliberately the cheapest reasonable price for the straddle, since

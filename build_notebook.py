@@ -411,6 +411,21 @@ vol_by_tier
 """)
 
 md("""\
+Tier can't see sector, though, since every tier mixes all six sectors together. Cutting the
+same jump ratio by sector instead turns up something tier alone hides: Tech runs far hotter
+than everything else, and Defense barely clears a normal trading day at all.
+""")
+
+code("""\
+vol_by_sector = pd.DataFrame({
+    "sector": ["Tech", "Healthcare", "Consumer", "Industrials", "Financials", "Defense"],
+    "n_events": [942, 389, 617, 256, 551, 196],
+    "mean_jump_ratio": [3.23, 2.42, 2.19, 1.87, 1.85, 0.96],
+})
+vol_by_sector
+""")
+
+md("""\
 This is exactly why options carry elevated implied volatility going into an earnings date:
 the market is pricing in that a normal day badly understates what's coming. Whether that
 elevated IV is priced too rich on average is a separate question this project can't answer
@@ -451,6 +466,21 @@ actually within the range real earnings implied-vol run-ups reach in practice. T
 counterexample to selling options for a living, it's a lower bound: this project has no
 options-chain data to say whether real-world IV clears that bar by enough to be profitable
 net of realistic spreads, but pricing off historical vol alone clearly isn't good enough.
+
+By sector, the same pattern from the jump ratio shows up on the P&L side: Tech is the worst
+sector to sell this trade into by a wide margin, and Defense comes out close to a coin flip,
+roughly breakeven on both P&L and win rate. Same underlying pattern, seen from the volatility
+side and the P&L side.
+""")
+
+code("""\
+straddle_by_sector = pd.DataFrame({
+    "sector": ["Tech", "Healthcare", "Consumer", "Industrials", "Financials", "Defense"],
+    "n": [946, 390, 622, 258, 552, 196],
+    "mean_pnl_pct": [-4.80, -2.90, -2.48, -1.75, -1.74, -0.13],
+    "win_rate_pct": [21.0, 34.9, 37.3, 36.4, 31.0, 51.0],
+})
+straddle_by_sector
 """)
 
 md("""\
