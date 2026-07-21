@@ -15,15 +15,14 @@ def code(text):
 md("""\
 # Post-Earnings Announcement Drift (PEAD) Analysis
 
-**Question:** after a company reports earnings that beat or miss analyst estimates, does its
-stock price keep drifting in that direction over the following days (PEAD), or does the
-market reprice instantly? And does that effect get stronger in smaller, less-covered stocks,
-as academic literature suggests?
+Does a stock keep drifting after it beats or misses earnings, or does the market just
+reprice instantly and move on? And is that effect actually stronger in smaller,
+less-covered stocks, the way the literature claims?
 
-This notebook walks through the full analysis: 2,953 earnings events across 60 stocks
-(20 large/20 mid/20 small-cap), tested with six independent methods. See `README.md` in this
-repository for the full methodology write-up; this notebook focuses on the results
-themselves, with the actual charts and tables rendered inline.
+This notebook walks through what I found: 2,953 earnings events across 60 stocks (20
+large/20 mid/20 small-cap), tested six different ways. `README.md` in this repo has the
+full methodology writeup; this notebook is more of a results tour, with the actual charts
+and tables rendered inline so you don't have to run anything to see them.
 """)
 
 code("""\
@@ -60,8 +59,8 @@ print(f"{len(df)} earnings events, {df['symbol'].nunique()} tickers, "
 md("""\
 ## Sample composition
 
-Three market-cap tiers, each with 20 tickers spanning Tech, Financials, Healthcare, Consumer,
-Defense, and Industrials — deliberately balanced so no single sector dominates any tier.
+Three market-cap tiers, 20 tickers each, spread across Tech, Financials, Healthcare,
+Consumer, Defense, and Industrials so no single sector dominates any tier.
 """)
 
 code("""\
@@ -70,11 +69,12 @@ tier_summary.loc[["large", "mid", "small"]]
 """)
 
 md("""\
-## 1. Does surprise size predict abnormal drift? (quintile buckets)
+## 1. Does surprise size predict abnormal drift?
 
-Bucket every event into quintiles by surprise size (biggest miss to biggest beat) and check
-the average abnormal (market-adjusted) drift 10 trading days later. If PEAD were real, we'd
-expect a clean upward staircase from "big miss" (negative drift) to "big beat" (positive drift).
+I bucketed every event into quintiles by surprise size, biggest miss to biggest beat, and
+checked the average abnormal (market-adjusted) drift 10 trading days later. If PEAD were
+real, this should look like a clean staircase: negative drift for big misses, positive for
+big beats.
 """)
 
 code("""\
@@ -107,18 +107,17 @@ plt.show()
 """)
 
 md("""\
-No clean upward staircase — if anything, "Beat" and "Miss" show similar small positive drift
-while "Meet" and "Big beat" sit near zero. None of these differences are distinguishable from
-noise (all bars are "not significant" here).
+No staircase. If anything, "Beat" and "Miss" show similar small positive drift while "Meet"
+and "Big beat" sit near zero, and none of it is distinguishable from noise.
 """)
 
 md("""\
 ## 2. Coverage hypothesis: does the effect strengthen in less-covered stocks?
 
-The literature says PEAD should be strongest in small-cap, low-analyst-coverage stocks (which
-reprice slowly) and weakest in heavily-covered mega-caps. Tested directly with Spearman
-correlation (robust to the extreme outlier surprise values that show up when a company's
-estimated EPS is near zero) across all three tiers, at two drift horizons.
+The literature says PEAD should be strongest in small-cap, low-coverage stocks (which
+reprice slowly) and weakest in heavily-covered mega-caps. I tested this directly with a
+Spearman correlation, which is robust to the extreme outlier surprise values that show up
+when a company's estimated EPS is near zero, across all three tiers at two drift horizons.
 """)
 
 code("""\
@@ -134,21 +133,21 @@ pd.DataFrame(rows)
 """)
 
 md("""\
-Every tier is statistically indistinguishable from zero, at both windows. If anything, the
-correlations are all small and slightly *negative* — the opposite direction and opposite
-pattern (large should be smaller than small) from what the coverage hypothesis predicts.
+Every tier comes back statistically indistinguishable from zero, at both windows. If
+anything, the correlations are all small and slightly negative, which is the opposite
+direction and the opposite pattern from what the coverage hypothesis predicts.
 """)
 
 md("""\
-## 3. Cluster-robust regression — a real bug caught mid-analysis
+## 3. Cluster-robust regression, and a bug I caught mid-analysis
 
 Repeated earnings events from the same company aren't fully independent, so standard errors
-should be clustered by ticker. The first attempt at this produced a "highly significant"
-large-cap result that flatly contradicted the Spearman test above on identical data — traced
-to two compounding issues: a handful of extreme leverage points (surprise values up to
-+6,567%, from near-zero EPS estimates) dominating an unwinsorized linear fit, and unreliable
-cluster-robust inference with too few ticker-clusters. Fixed below by winsorizing at the
-1st/99th percentile and only trusting tiers with 20+ clusters.
+should be clustered by ticker. My first attempt at this produced a "highly significant"
+large-cap result that flatly contradicted the Spearman test above on the identical data. It
+turned out to be two compounding issues: a handful of extreme leverage points (surprise
+values up to +6,567%, from near-zero EPS estimates) dominating an unwinsorized linear fit,
+plus unreliable cluster-robust inference from too few ticker-clusters. Fixed below by
+winsorizing at the 1st/99th percentile and only trusting tiers with 20+ clusters.
 """)
 
 code("""\
@@ -180,19 +179,20 @@ cluster_df
 """)
 
 md("""\
-The one borderline result (mid-cap, 20-day window, raw p=0.020) does not survive
+The one borderline result (mid-cap, 20-day window, raw p=0.020) doesn't survive
 Benjamini-Hochberg correction across all 6 tests (corrected p≈0.12). Nothing survives.
 """)
 
 md("""\
 ## 4. Event study: cumulative abnormal return, day by day
 
-Rather than only checking fixed checkpoints, plot the average daily abnormal return from 10
-days before to 20 days after Day 0, cumulated. Real PEAD would show the line climbing
-steadily after Day 0; instant repricing would show a sharp jump exactly at Day 0 and then flat.
+Instead of only checking fixed checkpoints, I plotted the average daily abnormal return
+from 10 days before to 20 days after Day 0, cumulated. Real PEAD should show the line
+climbing steadily after Day 0; instant repricing would show a sharp jump right at Day 0 and
+then flat.
 
-This section needs raw daily prices (not just the pre-aggregated `earnings_drift` view), so it
-requires the live database — it's skipped with a clear message if only the static snapshot is
+This part needs raw daily prices, not just the pre-aggregated `earnings_drift` view, so it
+needs the live database. It skips with a clear message if only the static snapshot is
 available.
 """)
 
@@ -248,33 +248,33 @@ else:
 """)
 
 md("""\
-The jump happens almost entirely on Day 0 itself. The curve is close to flat afterward,
-rather than climbing steadily — the visual signature of instant repricing, not PEAD.
+The jump happens almost entirely on Day 0 itself. The curve stays close to flat afterward
+instead of climbing, which is what instant repricing looks like, not PEAD.
 """)
 
 md("""\
 ## 5. Placebo check: is even the small post-Day-0 drift earnings-specific?
 
 A raw test of "any positive drift in the 20 days after Day 0" (ignoring surprise direction)
-does come back statistically significant on its own (mean +0.58%, p=0.0003, per-event). Before
-trusting that, it's worth checking whether *random, non-earnings days* for the same stocks
-show the same thing.
+does come back statistically significant on its own: mean +0.58%, p=0.0003, per event.
+Before I trusted that, I wanted to know whether random, non-earnings days for the same
+stocks show the same thing.
 
-The full computation (per-event sums, 100 repeated random draws with different seeds to build
-an actual empirical null distribution rather than trusting one lucky/unlucky draw, exclusion
-buffers around real earnings dates) lives in `event_study.py` — reproduced here as reported
-values rather than re-derived inline, so this notebook stays a readable summary instead of a
-duplicate of that script:
+The full computation for this lives in `event_study.py` (per-event sums, 100 repeated random
+draws with different seeds to build an actual empirical null distribution instead of
+trusting one lucky or unlucky draw, exclusion buffers around real earnings dates). I'm just
+reporting the results here rather than re-deriving them, so this notebook stays a summary
+instead of a copy of that script:
 
 | | Mean CAR (day +1 to +20) |
 |---|---|
-| Real earnings-day events (n=2,953) | **+0.580%** |
+| Real earnings-day events (n=2,953) | +0.580% |
 | Placebo distribution across 100 runs of random non-earnings days | mean +0.783%, range +0.255% to +1.454% |
 
-**Empirical p-value** (fraction of the 100 random-day runs with a mean at least as large as
-the real earnings-day result): **0.860**.
+Empirical p-value (fraction of the 100 random-day runs with a mean at least as large as the
+real earnings-day result): 0.860.
 
-The real earnings-day effect sits in the *lower half* of the placebo distribution — random
+The real earnings-day effect sits in the lower half of the placebo distribution. Random,
 non-earnings days show this "drift" just as much, usually more. It isn't earnings-specific;
 it's this sample's general upward tendency over the study period.
 """)
@@ -283,32 +283,31 @@ md("""\
 ## 6. Market model: proper beta-adjusted abnormal returns
 
 Everywhere above, "abnormal return" assumes every stock has a beta of exactly 1 relative to
-the market. The academic standard (Brown & Warner 1985) estimates each stock's *actual* beta
-from a clean pre-event window and measures abnormal return against that stock-specific
-expectation instead. See `market_model.py` for the full implementation (beta estimated from a
+the market. The actual academic standard (Brown & Warner 1985) estimates each stock's real
+beta from a clean pre-event window and measures abnormal return against that stock-specific
+expectation instead. See `market_model.py` for the implementation: beta estimated from a
 250-day window ending 30 days before each event, so the event itself can never leak into the
-estimate).
+estimate.
 
-Average beta across this sample is **1.13** — these are higher-than-market-sensitivity
-stocks, so the simpler method was silently crediting some of that generic extra sensitivity to
+Average beta across this sample is 1.13, which means these are higher-than-market-sensitivity
+stocks, so the simpler method was quietly crediting some of that generic extra sensitivity to
 "abnormal" earnings movement. Once properly beta-adjusted, the post-Day-0 continuation drift
-almost entirely disappears: mean CAR change from Day 0 to Day +20 is **-0.065%** (p=0.701) —
-not remotely significant, and the curve is flat-to-slightly-declining rather than climbing.
+almost entirely disappears: mean CAR change from Day 0 to Day +20 is -0.065% (p=0.701), not
+remotely significant, and the curve actually declines slightly instead of climbing.
 """)
 
 md("""\
 ## Conclusion
 
-No statistically significant relationship was found between earnings surprise size and
-abnormal post-earnings drift, in any tier, using six independent analytical lenses: bucketed
-significance testing, cluster-robust regression, a walk-forward-validated classifier, a
-market-beta validity check, an event-study CAR with a 100-run placebo comparison, and a
-proper beta-adjusted market model. The coverage hypothesis (that less-covered stocks should
-show a stronger effect) was not confirmed either — every tier stayed statistically
-indistinguishable from zero, and the estimates converged closer to zero, not further from it,
-as the sample grew from 807 to 2,953 events.
+No statistically significant relationship between earnings surprise size and abnormal
+post-earnings drift, in any tier, across six independent angles: bucketed significance
+testing, cluster-robust regression, a walk-forward-validated classifier, a market-beta
+validity check, an event-study CAR with a 100-run placebo comparison, and a proper
+beta-adjusted market model. The coverage hypothesis didn't hold up either — every tier
+stayed statistically indistinguishable from zero, and the estimates converged closer to
+zero, not further from it, as the sample grew from 807 to 2,953 events.
 
-Full methodology, all limitations, and instructions to reproduce this analysis are in
+Full methodology, all the limitations, and instructions to reproduce this are in
 `README.md`.
 """)
 
