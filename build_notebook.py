@@ -181,7 +181,7 @@ cluster_df
 """)
 
 md("""\
-The one borderline result (mid-cap, 20-day window, raw p=0.020) doesn't survive
+The one borderline result (mid-cap, 20-day window, raw p=0.021) doesn't survive
 Benjamini-Hochberg correction across all 6 tests (corrected p≈0.12). Nothing survives.
 """)
 
@@ -319,7 +319,8 @@ I also sliced the coverage-hypothesis test by sector instead of tier (one margin
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
 or volatility change predict drift on their own (they don't either), priced the most
 obvious naive PEAD trade (long "big beat", short "big miss") against a realistic 20bps
-round-trip cost assumption (it loses money even before costs, at -0.009% gross), and
+round-trip cost assumption (barely positive gross at +0.06%, then loses money net of
+costs at -0.34%), and
 quantified survivorship bias in this ticker universe: the median stock here still roughly
 matched the market over its full history and the mean is far above it, since this universe
 was picked as companies that are still around and doing well today. That bias is a real
@@ -335,6 +336,15 @@ their own higher detection threshold.
 
 See `sector_analysis.py`, `signal_analysis.py`, `economic_significance.py`,
 `survivorship_check.py`, and `power_analysis.py` for the full output on each of these.
+
+One more thing worth mentioning: writing `queries.sql` (a standalone set of SQL-only
+business-question queries, no pandas) surfaced a real bug. Postgres' NUMERIC type allows a
+literal NaN value and sorts it as larger than every real number, so "top 10 biggest beats"
+returned garbage instead of real results. Traced it to 22 yfinance rows where reported EPS
+exactly equalled estimated EPS, a case yfinance's own surprise-percentage field returns NaN
+for even though the right answer is just 0.0%. Every Python script's `dropna()` calls had
+been silently excluding these all along, so no headline number here was ever wrong, but it
+would have broken any naive SQL query. Fixed at the source and reran everything to confirm.
 """)
 
 md("""\

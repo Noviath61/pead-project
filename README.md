@@ -81,11 +81,11 @@ flowchart LR
 
 | Surprise bucket | Median surprise | Avg. abnormal drift (10d) | p-value |
 |---|---|---|---|
-| Big miss | -10.8% | +0.20% | 0.514 |
-| Miss | +1.5% | +0.61% | 0.016 |
-| Meet | +6.5% | +0.00% | 0.983 |
-| Beat | +15.2% | +0.17% | 0.547 |
-| Big beat | +47.3% | +0.19% | 0.579 |
+| Big miss | -10.7% | +0.18% | 0.538 |
+| Miss | +1.5% | +0.62% | 0.015 |
+| Meet | +6.4% | +0.03% | 0.890 |
+| Beat | +15.0% | +0.12% | 0.675 |
+| Big beat | +46.8% | +0.25% | 0.475 |
 
 ![No staircase from miss to beat](charts/quintile_drift.png)
 
@@ -97,10 +97,10 @@ If PEAD were real here, this should read like a staircase. It doesn't.
 |---|---|---|---|---|---|
 | Large-cap | 10d | 1,237 | 20 | 0.006 | 0.835 |
 | Large-cap | 20d | 1,237 | 20 | 0.018 | 0.518 |
-| Mid-cap | 10d | 831 | 20 | 0.001 | 0.966 |
-| Mid-cap | 20d | 831 | 20 | 0.046 | 0.186 |
-| Small-cap | 10d | 863 | 20 | -0.021 | 0.531 |
-| Small-cap | 20d | 863 | 20 | -0.004 | 0.903 |
+| Mid-cap | 10d | 835 | 20 | -0.000 | 0.996 |
+| Mid-cap | 20d | 835 | 20 | 0.045 | 0.189 |
+| Small-cap | 10d | 881 | 20 | -0.022 | 0.512 |
+| Small-cap | 20d | 881 | 20 | -0.009 | 0.793 |
 
 ### Cluster-robust regression (and a bug I caught mid-analysis)
 
@@ -117,24 +117,23 @@ any tier with too few clusters to trust.
 |---|---|---|---|---|---|---|
 | Large-cap | 10d | 1,237 | 20 | -0.0023 | 0.603 | 0.603 |
 | Large-cap | 20d | 1,237 | 20 | 0.0103 | 0.076 | 0.151 |
-| Mid-cap | 10d | 831 | 20 | 0.0086 | 0.054 | 0.151 |
-| Mid-cap | 20d | 831 | 20 | 0.0172 | 0.020 | 0.122 |
-| Small-cap | 10d | 863 | 20 | -0.0039 | 0.365 | 0.438 |
-| Small-cap | 20d | 863 | 20 | 0.0057 | 0.291 | 0.436 |
+| Mid-cap | 10d | 835 | 20 | 0.0086 | 0.058 | 0.151 |
+| Mid-cap | 20d | 835 | 20 | 0.0172 | 0.021 | 0.125 |
+| Small-cap | 10d | 881 | 20 | -0.0039 | 0.366 | 0.439 |
+| Small-cap | 20d | 881 | 20 | 0.0055 | 0.320 | 0.439 |
 
 Every tier now has a full 20 clusters (large-cap started at 12 since it began as
 Alpha Vantage-only; sourcing the remaining 8 via yfinance fixed this). The one borderline
-number, mid-cap at 20 days, doesn't survive Benjamini-Hochberg correction (0.122).
+number, mid-cap at 20 days, doesn't survive Benjamini-Hochberg correction (0.125).
 
 ### Classifier: random split vs. walk-forward
 
-A random 80/20 split scored 52.1% (logistic regression) and 53.8% (random forest) against a
-50.6% baseline. But a random split on time-series data risks lookahead bias: a model partly
-trained on later events predicting an earlier one, same principle as avoiding lookahead bias
-in a trading backtest. 5-fold walk-forward validation (only training on chronologically
-earlier events) tells a different story: 49.3% and 50.9% average accuracy against a 51.5%
-baseline. Both sit at or below baseline in nearly every fold. The walk-forward result is the
-one I trust.
+A random 80/20 split scored 50.6% (logistic regression) and 48.1% (random forest) against a
+50.4% baseline, already basically a coin flip. A random split on time-series data also risks
+lookahead bias: a model partly trained on later events predicting an earlier one, same
+principle as avoiding lookahead bias in a trading backtest. 5-fold walk-forward validation
+(only training on chronologically earlier events) confirms it: 49.0% and 50.2% average
+accuracy against a 51.6% baseline. Both sit at or below baseline in nearly every fold.
 
 ### Pipeline validity check
 
@@ -198,7 +197,7 @@ the other two features this pipeline computes, don't predict drift either, in an
 ### Was this test even powerful enough to find something?
 
 A null result only means something if the test could have detected a real effect had one
-existed. Using a standard Fisher z-transform power calculation, the tier-level tests (n=831
+existed. Using a standard Fisher z-transform power calculation, the tier-level tests (n=835
 to 1,237) could reliably detect a Spearman correlation as small as 0.08-0.10 at 80% power,
 which is Cohen's conventional threshold for a "small" effect. Every observed correlation is
 well below that. Two sector splits with only 4-6 tickers (Defense, Industrials) genuinely are
@@ -210,7 +209,7 @@ test missing something real; it just didn't find anything.
 
 Statistical significance and economic significance are different questions. The most obvious
 naive PEAD trade, long the "big beat" quintile and short "big miss," nets a gross spread of
--0.009% before any trading costs at all, and about -0.41% after a conservative 20bps
+only +0.06% before any trading costs at all, and about -0.34% after a conservative 20bps
 round-trip cost assumption per leg. Not tradeable by any standard, on top of never being
 statistically significant to begin with.
 
@@ -255,8 +254,11 @@ that existed back to 2006.
 **Data engineering**: two earnings APIs and two price APIs feeding a normalized Postgres
 schema in Docker, idempotent ingestion with real error handling (a third-party API returned a
 rate-limit notice with an HTTP 200 instead of an error code, so my original version silently
-treated it as "zero results" instead of failing loudly), data quality checks, lineage
-tracking, and a SQL view built on window functions instead of pulling everything into Python.
+treated it as "zero results" instead of failing loudly), data quality checks (including one
+that caught a real bug, see below), lineage tracking, a SQL view built on window functions
+instead of pulling everything into Python, and a standalone SQL showcase (`queries.sql`)
+answering real business questions directly with CTEs, ranking functions, and native
+aggregates, not just through the pandas layer.
 
 **Statistics**: quintile bucketing, cluster-robust regression with an outlier-driven false
 positive diagnosed and fixed along the way, a market-beta validity check, walk-forward
@@ -281,6 +283,21 @@ price history further back, so running the tests quietly deleted real production
 side effect. Caught by comparing row counts before and after instead of just trusting "tests
 passed," then fixed by making the fixture back up and restore whatever's really there.
 
+**A real SQL data-quality bug, found while writing showcase queries**: `queries.sql`
+(11 standalone business-question queries: window functions, CTEs, `NTILE()`-based quintile
+bucketing, native `CORR()`) surfaced a genuine issue the first time I ran it. Postgres'
+NUMERIC type allows a literal NaN value, and sorts it as *larger* than every real number, so
+"top 10 biggest earnings beats" returned garbage NaN rows instead of the real ones. Traced it
+to 22 yfinance-sourced rows where reported EPS exactly equalled estimated EPS: yfinance's own
+surprise-percentage field returns NaN in that specific case even though the answer is just
+0.0%. Every Python script's `.dropna()` calls had been silently excluding these 22 events the
+entire time, so the bug never affected any headline result, but it would have corrupted any
+naive SQL query against the same data. Fixed at the source in `ingest_yfinance.py`
+(recomputing the percentage myself when yfinance's own field is NaN, using the same
+abs-value-denominator convention their correct rows already follow), added a dedicated
+data-quality check for literal NaN values, and reran the full pipeline to confirm every
+number in this README already accounted for it correctly.
+
 ## Running it
 
 ```bash
@@ -298,6 +315,7 @@ python ingest_yfinance.py                 # mid/small-cap tickers (no keys neede
 python backfill_earnings_yfinance.py      # fallback earnings source for any AV-rate-limited tickers
 python backfill_history.py                # extend price history back to 2006/IPO
 python data_quality_checks.py             # validate the loaded data
+make queries                              # standalone SQL showcase (business questions in pure SQL)
 python eda.py                             # quintile + significance analysis
 python tier_analysis.py                   # coverage hypothesis test + cluster-robust regression
 python model.py                           # classifier

@@ -1,4 +1,4 @@
-.PHONY: setup test lint typecheck pipeline dashboard notebook clean
+.PHONY: setup test lint typecheck pipeline queries dashboard notebook clean
 
 setup:
 	./setup.sh
@@ -31,6 +31,9 @@ pipeline:
 	python economic_significance.py
 	python survivorship_check.py
 	python power_analysis.py
+
+queries:
+	docker exec -i pead-project-db-1 psql -U pead_user -d pead < queries.sql
 
 dashboard:
 	streamlit run dashboard.py
