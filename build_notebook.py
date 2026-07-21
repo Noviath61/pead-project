@@ -1,7 +1,9 @@
+from typing import Any
+
 import nbformat as nbf
 
 nb = nbf.v4.new_notebook()
-cells = []
+cells: list[Any] = []
 
 
 def md(text):

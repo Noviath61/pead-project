@@ -1,5 +1,7 @@
 import os
 import time
+from typing import Any
+
 import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -52,14 +54,14 @@ UPSERT_PRICE = text("""
 """)
 
 
-def to_float_or_none(value):
+def to_float_or_none(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
 
 
-def fetch_earnings(symbol):
+def fetch_earnings(symbol: str) -> list[dict[str, Any]]:
     response = requests.get(
         "https://www.alphavantage.co/query",
         params={"function": "EARNINGS", "symbol": symbol, "apikey": ALPHAVANTAGE_API_KEY},
@@ -71,7 +73,7 @@ def fetch_earnings(symbol):
     return data["quarterlyEarnings"]
 
 
-def already_loaded(table, symbol):
+def already_loaded(table: str, symbol: str) -> bool:
     with engine.connect() as conn:
         result = conn.execute(
             text(f"SELECT 1 FROM {table} WHERE symbol = :symbol LIMIT 1"), {"symbol": symbol}
@@ -79,7 +81,7 @@ def already_loaded(table, symbol):
         return result.first() is not None
 
 
-def fetch_prices(symbol):
+def fetch_prices(symbol: str) -> list[dict[str, Any]]:
     response = requests.get(
         "https://financialmodelingprep.com/stable/historical-price-eod/full",
         params={"symbol": symbol, "apikey": FMP_API_KEY, "from": PRICE_START, "to": PRICE_END},
@@ -88,7 +90,7 @@ def fetch_prices(symbol):
     return response.json()
 
 
-def load_earnings(symbol):
+def load_earnings(symbol: str) -> None:
     rows = fetch_earnings(symbol)
     with engine.begin() as conn:
         for row in rows:
@@ -106,7 +108,7 @@ def load_earnings(symbol):
     print(f"  earnings: {len(rows)} rows")
 
 
-def load_prices(symbol):
+def load_prices(symbol: str) -> None:
     rows = fetch_prices(symbol)
     with engine.begin() as conn:
         for row in rows:

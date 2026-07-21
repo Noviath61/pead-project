@@ -10,7 +10,7 @@ TICKERS = [
 ]
 
 
-def load_earnings_yf(symbol):
+def load_earnings_yf(symbol: str) -> None:
     earnings = yf.Ticker(symbol).get_earnings_dates(limit=40)
     if earnings is None or len(earnings) == 0:
         print("  earnings: no data returned")
@@ -35,7 +35,7 @@ def load_earnings_yf(symbol):
     print(f"  earnings: {n} rows")
 
 
-def load_prices_yf(symbol):
+def load_prices_yf(symbol: str) -> None:
     df = yf.Ticker(symbol).history(start=PRICE_START, end=PRICE_END)
     n = 0
     with engine.begin() as conn:

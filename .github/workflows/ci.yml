@@ -43,7 +43,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Lint
-        run: ruff check .
+        run: make lint
+
+      - name: Type check
+        run: mypy .
 
       - name: Apply schema and view
         run: |
@@ -53,4 +56,4 @@ jobs:
           psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" -f create_view.sql
 
       - name: Run tests
-        run: pytest tests/ -v
+        run: make test

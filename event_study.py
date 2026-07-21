@@ -136,14 +136,14 @@ for run in range(N_PLACEBO_RUNS):
     run_cars = run_one_placebo(rng)
     placebo_run_means.append(sum(run_cars) / len(run_cars))
 
-placebo_run_means = np.array(placebo_run_means)
+placebo_run_means_arr = np.array(placebo_run_means)
 real_mean = per_event_continuation.mean()
-empirical_p = (placebo_run_means >= real_mean).mean()
+empirical_p = (placebo_run_means_arr >= real_mean).mean()
 
 print(f"real post-day0 mean CAR: {real_mean:.3f}%")
 print(f"placebo distribution across {N_PLACEBO_RUNS} runs: "
-      f"mean={placebo_run_means.mean():.3f}%  std={placebo_run_means.std():.3f}%  "
-      f"min={placebo_run_means.min():.3f}%  max={placebo_run_means.max():.3f}%")
+      f"mean={placebo_run_means_arr.mean():.3f}%  std={placebo_run_means_arr.std():.3f}%  "
+      f"min={placebo_run_means_arr.min():.3f}%  max={placebo_run_means_arr.max():.3f}%")
 print(f"empirical p-value (fraction of random-day runs with mean CAR >= the real earnings-day "
       f"mean): {empirical_p:.3f}")
 
