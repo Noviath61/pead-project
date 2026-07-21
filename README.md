@@ -52,6 +52,20 @@ Everything is pulled into a normalized Postgres schema (Docker) and joined throu
 built on layered window functions (`LEAD`/`LAG`, rolling `AVG`/`STDDEV_SAMP`) to compute
 forward/trailing returns, volume, and volatility per ticker.
 
+```mermaid
+flowchart LR
+    AV[Alpha Vantage] --> DB[(Postgres)]
+    YF[yfinance] --> DB
+    FMP[Financial Modeling Prep] --> DB
+    DB --> VIEW[earnings_drift SQL view]
+    VIEW --> STATS[Stats: quintiles, cluster-robust\nregression, market model, power]
+    VIEW --> ML[Classifier: walk-forward CV]
+    VIEW --> DASH[Streamlit dashboard]
+    VIEW --> NB[analysis.ipynb]
+    STATS --> README[This README]
+    ML --> README
+```
+
 ## Results
 
 2,953 earnings events across all 60 tickers, up to 20 years of history where available.
@@ -234,9 +248,10 @@ survivorship-bias check quantifying why the sample drifts upward even on random 
 formal power analysis showing the null result isn't just an underpowered test.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
-synthetic fixtures and checks the SQL view against them exactly, `ruff` and the test suite
-both wired into CI, a Streamlit dashboard with a static-snapshot fallback for when there's no
-live database, and a narrative Jupyter notebook as a companion to the pipeline scripts.
+synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
+type checking both wired into CI alongside the test suite, a `Makefile` for the common
+commands, a Streamlit dashboard with a static-snapshot fallback for when there's no live
+database, and a narrative Jupyter notebook as a companion to the pipeline scripts.
 
 **A bug in the project's own safety net**: the test suite had a fixture that assumed a date
 range would always be free of real data. True when I wrote it, false once I extended real
@@ -249,6 +264,9 @@ passed," then fixed by making the fixture back up and restore whatever's really 
 ```bash
 ./setup.sh   # starts Postgres, creates the venv, installs deps, applies schema+view
 ```
+
+There's also a `Makefile` (`make lint`, `make test`, `make pipeline`, `make dashboard`) that
+wraps the commands below, if you'd rather use that.
 
 Then, with `FMP_API_KEY` and `ALPHAVANTAGE_API_KEY` set in `.env`:
 
