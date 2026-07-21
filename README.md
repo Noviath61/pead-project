@@ -324,6 +324,35 @@ bound: if you can't get implied vol priced at least a few multiples over histori
 picking up a genuinely bad number, and this project has no options-chain data to say whether
 real-world IV clears that bar by enough to be a profitable trade net of realistic spreads.
 
+### Iron condor: does capping the loss actually change the picture?
+
+The straddle backtest above modeled a naked short straddle, undefined risk. That's not
+really how most people who trade earnings with options size a position: undefined risk
+needs far more margin, and one bad print can wipe out weeks of gains. `iron_condor_backtest.py`
+reruns the same backtest with the loss capped by protective wings (an iron condor), set at 3x
+the credit received, a representative defined-risk setup rather than a fitted parameter. It
+keeps the same credit collected as the straddle version and only caps the downside, which
+overstates the condor's real edge somewhat, since real wings cost part of the credit to buy.
+
+| | Mean P&L | Worst single event |
+|---|---|---|
+| Naked straddle (uncapped) | -2.92% | -50.1% |
+| Iron condor (3x credit cap) | -1.72% | -17.6% |
+
+Capping the loss doesn't just trim the tail, it noticeably improves the average too, because
+the naked version's left tail is fat enough that a handful of catastrophic single events were
+dragging the average down harder than the typical trade. The cap actually bound on 24.5% of
+events, and the pattern holds across a range of wing widths (2x to 6x credit, see the script
+output for the full sensitivity table).
+
+![Naked straddle vs. iron condor P&L](charts/iron_condor_backtest.png)
+
+The average outcome is still negative either way on this historical-vol-priced basis, so this
+isn't a case for trading earnings condors as a reliable edge. It is a concrete illustration of
+why real options traders size earnings positions with defined risk in the first place: not
+because it improves the expected outcome in general, but because it prevents any single bad
+print from being the one that actually matters.
+
 ### GARCH(1,1): does a real volatility-forecasting model change the story?
 
 Every volatility number so far uses a 20-day rolling standard deviation as "normal"
@@ -465,6 +494,11 @@ that existed back to 2006.
   point-in-time before each event, unlike the market-model and Fama-French sections, which
   carefully avoid this. The fitted parameters carry mild lookahead bias as a result, even
   though the daily forecast itself only conditions on information through the prior day
+- The iron condor backtest holds the credit received fixed at the straddle's price and only
+  caps the loss. A real iron condor's net credit is lower than an equivalent straddle's, since
+  part of what you collect pays for the protective wings, so this overstates the condor's real
+  edge somewhat. The 3x wing-width multiplier is a representative choice, not a fitted or
+  optimized parameter
 
 ## What this demonstrates
 
@@ -491,12 +525,14 @@ backtest with Sharpe ratio and max drawdown instead of just a pooled average ret
 volatility jump analysis (log-scale one-sample t-test) that reframes the whole dataset around
 the question that actually matters for selling options around earnings, an options-pricing
 backtest using the Brenner-Subrahmanyam approximation to convert historical volatility into
-an at-the-money straddle price, a GARCH(1,1) volatility-forecasting model checked against the
-simpler rolling-window estimate, a volatility-persistence check on whether the Day-0 spike
-lingers or reverts, bootstrap confidence intervals comparing naive to cluster-level
-resampling on the headline correlations, and a feature-engineering follow-up feeding the
-volatility work's strongest standalone signal back into the walk-forward classifier to check
-whether it actually helps predict direction (it doesn't, honestly reported either way).
+an at-the-money straddle price, a defined-risk (iron condor) variant of that backtest showing
+how capping the loss changes both the average outcome and the tail, a GARCH(1,1)
+volatility-forecasting model checked against the simpler rolling-window estimate, a
+volatility-persistence check on whether the Day-0 spike lingers or reverts, bootstrap
+confidence intervals comparing naive to cluster-level resampling on the headline
+correlations, and a feature-engineering follow-up feeding the volatility work's strongest
+standalone signal back into the walk-forward classifier to check whether it actually helps
+predict direction (it doesn't, honestly reported either way).
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, `ruff` linting and `mypy`
@@ -584,6 +620,7 @@ python power_analysis.py                  # was the test even powerful enough to
 python backtest_equity_curve.py           # compounded equity curve, Sharpe ratio, max drawdown
 python volatility_risk_premium.py         # earnings-day move vs. normal-day volatility, by tier
 python straddle_backtest.py               # historical-vol-priced straddle P&L using Brenner-Subrahmanyam
+python iron_condor_backtest.py            # same trade, capped loss, does defined risk change the picture?
 python garch_volatility_forecast.py       # GARCH(1,1) vs. rolling-window volatility, does it change anything?
 python volatility_crush_check.py          # does the Day-0 vol spike linger, or revert fast?
 python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on the headline correlations

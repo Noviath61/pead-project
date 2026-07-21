@@ -454,7 +454,42 @@ net of realistic spreads, but pricing off historical vol alone clearly isn't goo
 """)
 
 md("""\
-## 11. GARCH(1,1): does a real volatility-forecasting model change the story?
+## 11. Iron condor: does capping the loss actually change the picture?
+
+The straddle backtest above modeled a naked short straddle, undefined risk. That's not
+really how most people who trade earnings with options size a position: undefined risk needs
+far more margin, and one bad print can wipe out weeks of gains. This reruns the same backtest
+with the loss capped by protective wings (an iron condor), set at 3x the credit received, a
+representative defined-risk setup rather than a fitted parameter. It keeps the same credit
+collected as the straddle version and only caps the downside, which overstates the condor's
+real edge somewhat, since real wings cost part of the credit to buy.
+""")
+
+code("""\
+condor_summary = pd.DataFrame({
+    "structure": ["Naked straddle (uncapped)", "Iron condor (3x credit cap)"],
+    "mean_pnl_pct": [-2.92, -1.72],
+    "worst_single_event_pct": [-50.1, -17.6],
+})
+condor_summary
+""")
+
+md("""\
+Capping the loss doesn't just trim the tail, it noticeably improves the average too, because
+the naked version's left tail is fat enough that a handful of catastrophic single events were
+dragging the average down harder than the typical trade. The cap actually bound on 24.5% of
+events, and the pattern holds across a range of wing widths (2x to 6x credit tested in
+`iron_condor_backtest.py`).
+
+The average outcome is still negative either way on this historical-vol-priced basis, so this
+isn't a case for trading earnings condors as a reliable edge. It's a concrete illustration of
+why real options traders size earnings positions with defined risk in the first place: not
+because it improves the expected outcome in general, but because it prevents any single bad
+print from being the one that actually matters.
+""")
+
+md("""\
+## 12. GARCH(1,1): does a real volatility-forecasting model change the story?
 
 Every volatility number so far uses a 20-day rolling standard deviation as "normal"
 volatility, a reasonable baseline, but real volatility forecasting almost always accounts
@@ -493,7 +528,7 @@ time-series model structurally can't have no matter how sophisticated it gets.
 """)
 
 md("""\
-## 12. Does the earnings-day volatility spike actually linger afterward?
+## 13. Does the earnings-day volatility spike actually linger afterward?
 
 One more natural question out of the volatility work above: does the Day-0 spike bleed into
 the following two weeks, the way volatility clustering usually works in markets, or does it
@@ -528,7 +563,7 @@ in the days that follow it.
 """)
 
 md("""\
-## 13. Bootstrap confidence intervals: does clustering matter here too?
+## 14. Bootstrap confidence intervals: does clustering matter here too?
 
 The cluster-robust regression earlier showed that treating repeated events from the same
 company as independent understates uncertainty. `bootstrap_confidence_intervals.py` checks
@@ -565,7 +600,7 @@ every interval without actually checking, and the numbers said otherwise.
 """)
 
 md("""\
-## 14. A few more angles
+## 15. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -628,8 +663,11 @@ thing in this project to the part of the market I actually trade day to day. Pri
 at-the-money straddle off historical volatility alone and selling it into every event loses
 money clearly (p=2.8e-180), which puts a number on how much richer than historical vol real
 implied vol has to run just to break even, a genuinely useful lower bound even without
-options-chain data to check it against directly. Swapping in a GARCH(1,1) model instead of a
-flat rolling window gets closer to the realized move (geometric mean jump ratio 1.06x versus
+options-chain data to check it against directly. Capping that same trade's loss with an iron
+condor instead of a naked straddle improves the average outcome and shrinks the worst case
+dramatically (-50% down to -18%), the real reason options traders size earnings positions
+with defined risk in the first place. Swapping in a GARCH(1,1) model instead of a flat
+rolling window gets closer to the realized move (geometric mean jump ratio 1.06x versus
 1.27x) but doesn't close the gap, since no purely backward-looking time-series model can know
 an earnings date is coming. And the volatility itself doesn't linger,
 realized volatility in the ten days after an event actually reverts slightly below normal

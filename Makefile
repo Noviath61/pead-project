@@ -35,6 +35,7 @@ pipeline:
 	python backtest_equity_curve.py
 	python volatility_risk_premium.py
 	python straddle_backtest.py
+	python iron_condor_backtest.py
 	python garch_volatility_forecast.py
 	python volatility_crush_check.py
 	python bootstrap_confidence_intervals.py
