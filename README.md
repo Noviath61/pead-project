@@ -498,10 +498,56 @@ earnings days move several times a normal trading day (confirmed under two diffe
 volatility models, a simple rolling window and GARCH), that jump doesn't linger into the
 following two weeks, and a historical-vol-priced options trade sold into it loses money
 consistently enough to be statistically undeniable. None of that is a trading strategy on its
-own, this project has no options-chain data to say whether real implied volatility is priced
-richly enough to sell profitably, but it is a real, quantified, sector-varying pattern
-(Tech runs hottest, Defense barely moves) that a purely directional PEAD test would never
-have surfaced.
+own, the backtested analysis above has no options-chain data to say whether real implied
+volatility is priced richly enough to sell profitably, but it is a real, quantified,
+sector-varying pattern (Tech runs hottest, Defense barely moves) that a purely directional
+PEAD test would never have surfaced. `live_iv_check.py`, below, actually closes that gap with
+real (if simplified) options data instead of leaving it as a permanent disclaimer.
+
+## Live check: is the market pricing this correctly right now?
+
+Every volatility section above ends on the same disclosed limitation: there's no
+options-chain data, so nothing in the backtest can say whether real implied volatility is
+priced richly enough to be worth selling. `live_iv_check.py` closes that gap directly, using
+yfinance's free live options chains and earnings calendar, for the tickers I actually trade
+(HOOD, NVDA, GOOGL by default, though it takes any symbol as an argument).
+
+For each ticker, it finds the next earnings date, prices the at-the-money straddle on the
+nearest expiration, and isolates the earnings-specific piece of that price using variance
+additivity: subtract out the variance this stock's own recent volatility would explain over
+the non-earnings trading days between now and expiration, since an option priced weeks out
+mostly reflects ordinary day-to-day movement, not the event itself. It then compares that
+isolated expected move to this specific ticker's own historical earnings-day pattern
+(the same `jump_ratio` computed in `volatility_risk_premium.py`, scaled by its current
+volatility) to get a "richness ratio": is the market pricing in more or less movement than
+this stock has actually delivered on past earnings days?
+
+Run on 2026-07-21, the day before GOOGL's earnings and a week before HOOD's:
+
+| Ticker | Earnings date | Nearest expiration | Historical typical move | Market-implied move | Richness |
+|---|---|---|---|---|---|
+| GOOGL | 2026-07-22 | 2026-07-22 (1 trading day out) | 3.65% | 5.26% | 1.44x richer |
+| HOOD | 2026-07-29 | 2026-07-31 (8 trading days out) | 9.59% | 5.29% | 0.55x cheaper |
+| NVDA | 2026-08-26 | 2026-08-28 (28 trading days out) | - | - | skipped, too far out |
+
+NVDA is the honest part of this: its earnings are over a month away, and no closer weekly
+option exists yet, so netting out a month of assumed-constant daily volatility is far too
+shaky an assumption to trust. Rather than show a number, the script detects that case (nearest
+expiration more than 10 trading days out) and says so explicitly. That case surfaced a real
+bug during development: the naive version of this subtracted out MORE variance than the whole
+option price contained, which would make the earnings-specific variance negative and its
+square root undefined. Fixed by clipping at zero, and by refusing to report a result at all
+once the expiration is far enough out that the whole approach stops being trustworthy, rather
+than quietly returning a number that looked plausible but wasn't.
+
+This is descriptive context from this project's own historical data, not a trading signal or
+a recommendation, and it isn't reproducible the way every other result in this README is:
+it queries live market data and today's earnings calendar, so re-running it later will give
+different numbers as prices, dates, and available expirations change. That's the point. Every
+other script here answers a fixed historical question; this one is meant to actually be rerun
+before a real trade, on real tickers I hold, to see whether current pricing looks rich or
+cheap relative to that stock's own past earnings reactions, which is the version of this
+project I'd actually reach for before selling premium into an earnings date.
 
 ## Limitations
 
@@ -546,6 +592,13 @@ have surfaced.
   part of what you collect pays for the protective wings, so this overstates the condor's real
   edge somewhat. The 3x wing-width multiplier is a representative choice, not a fitted or
   optimized parameter
+- `live_iv_check.py`'s earnings-only decomposition assumes this stock's daily volatility stays
+  roughly constant right up until the event, when real-world IV often creeps up in the days
+  just before earnings. It also picks the strike nearest to spot rather than true delta-50
+  ATM, uses bid/ask midpoint pricing that can be stale for illiquid strikes, and per-ticker
+  historical samples are small for newer names (HOOD has a bit over a decade of quarters).
+  Results are only shown when the nearest expiration is within 10 trading days of today,
+  specifically because the underlying assumption breaks down further out than that
 
 ## What this demonstrates
 
@@ -580,6 +633,12 @@ confidence intervals comparing naive to cluster-level resampling on the headline
 correlations, and a feature-engineering follow-up feeding the volatility work's strongest
 standalone signal back into the walk-forward classifier to check whether it actually helps
 predict direction (it doesn't, honestly reported either way).
+
+**Live data integration**: everything above is a fixed historical backtest. `live_iv_check.py`
+pulls real-time options chains and earnings calendars from yfinance, decomposes an option
+price quoted weeks out into its earnings-specific component via variance additivity, and
+compares that to each ticker's own historical reaction pattern, turning the research into
+something I'd actually rerun before a real trade instead of a one-time report.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, a second suite of pure unit
@@ -638,6 +697,18 @@ correct for. Worth including specifically because it would have been easy to jus
 "clustering matters, therefore the cluster CI is wider" without checking, since that's the
 pattern from the earlier regression section, and the actual numbers said otherwise.
 
+**A negative variance that shouldn't exist, caught by an implausible result**: the first
+version of `live_iv_check.py` tried to isolate an earnings-specific expected move for every
+ticker, including NVDA, whose earnings were over a month out with no closer weekly option
+listed yet. Subtracting that stock's own recent daily volatility over 27 non-event trading
+days turned out to explain MORE variance than the whole straddle price contained, making the
+"earnings-specific" variance negative and its square root undefined, silently printed as
+0.00% instead of erroring. That's not a real answer, a month of assumed-constant daily
+volatility is far too shaky an assumption to trust. Fixed two ways: clip the variance at zero
+so the math never breaks, and, more importantly, stop reporting a number at all once the
+nearest expiration is more than 10 trading days out, since past that point the method itself
+isn't reliable regardless of how the arithmetic is guarded.
+
 ## Running it
 
 ```bash
@@ -682,6 +753,14 @@ pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
 jupyter nbconvert --to notebook --execute --inplace analysis.ipynb  # rebuild the notebook
+```
+
+One more, kept separate from the pipeline above on purpose, since it's not a reproducible
+historical result, it hits live market data:
+
+```bash
+python live_iv_check.py                   # or: make live-check
+python live_iv_check.py AAPL MSFT          # pass any ticker(s); defaults to HOOD, NVDA, GOOGL
 ```
 
 The dashboard also runs with no database at all, falling back to the committed

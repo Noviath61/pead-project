@@ -11,6 +11,7 @@ from backtest_math import (
     compound_wealth_index,
     max_drawdown_pct,
     cap_losses,
+    isolate_earnings_move_pct,
 )
 
 
@@ -81,3 +82,32 @@ def test_cap_losses_leaves_a_winning_trade_untouched():
     credit_pct = pd.Series([2.0])
     result = cap_losses(pnl_pct, credit_pct, wing_multiplier=3)
     assert result.tolist() == pytest.approx([5.0])
+
+
+def test_isolate_earnings_move_pct_with_zero_non_event_days_returns_raw_move():
+    # No non-event days between now and expiration means the whole straddle price IS the
+    # earnings move, nothing to net out.
+    result = isolate_earnings_move_pct(
+        raw_expected_move_pct=5.26, normal_daily_vol_pct=2.33, non_event_trading_days=0
+    )
+    assert result == pytest.approx(5.26)
+
+
+def test_isolate_earnings_move_pct_matches_hand_calculation():
+    # total variance (10/100)^2 = 0.01, normal variance (2/100)^2 * 5 = 0.002,
+    # earnings variance 0.008, sqrt(0.008) * 100 = 8.944...
+    result = isolate_earnings_move_pct(
+        raw_expected_move_pct=10.0, normal_daily_vol_pct=2.0, non_event_trading_days=5
+    )
+    assert result == pytest.approx(8.94427, abs=1e-4)
+
+
+def test_isolate_earnings_move_pct_clips_at_zero_instead_of_going_negative():
+    # This is the exact case a far-dated expiration produced during development: normal
+    # volatility over many non-event days can explain MORE variance than the whole straddle
+    # priced in, which would make the earnings-specific variance negative and its square root
+    # undefined. Clipped at zero rather than raising or returning NaN.
+    result = isolate_earnings_move_pct(
+        raw_expected_move_pct=11.45, normal_daily_vol_pct=2.36, non_event_trading_days=27
+    )
+    assert result == pytest.approx(0.0)

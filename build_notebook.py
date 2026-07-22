@@ -673,6 +673,27 @@ would have broken any naive SQL query. Fixed at the source and reran everything 
 """)
 
 md("""\
+## 16. A live version of the same question
+
+Everything above is a fixed historical backtest with no options-chain data, a limitation
+named honestly throughout. `live_iv_check.py` closes that gap using yfinance's free live
+options chains and earnings calendars: for a given ticker (HOOD, NVDA, GOOGL by default,
+or any symbol passed as an argument), it finds the next earnings date, prices the
+at-the-money straddle on the nearest expiration, isolates the earnings-specific piece of
+that price (netting out ordinary volatility over any non-event days between now and
+expiration, since a far-out option mostly reflects normal day-to-day movement), and compares
+it to that specific ticker's own historical earnings-day pattern.
+
+Deliberately not reproduced here with numbers: unlike everything else in this notebook,
+its output is a live snapshot that's already stale by the time anyone else runs it, prices,
+dates, and available expirations all move. It's the one piece of this project meant to
+actually be rerun before a real trade rather than read as a fixed result. See `README.md`
+for a sample run and the full methodology, including a real bug this caught during
+development (a too-far-out expiration made the variance-netting math go negative, fixed by
+refusing to report a number past a 10-trading-day horizon instead of just clipping it quietly).
+""")
+
+md("""\
 ## Conclusion
 
 No statistically significant relationship between earnings surprise size and abnormal

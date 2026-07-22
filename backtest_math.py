@@ -27,3 +27,17 @@ def max_drawdown_pct(wealth_index: pd.Series) -> float:
 def cap_losses(pnl_pct: pd.Series, credit_pct: pd.Series, wing_multiplier: float) -> pd.Series:
     max_loss_pct = -wing_multiplier * credit_pct
     return pnl_pct.clip(lower=max_loss_pct)
+
+
+def isolate_earnings_move_pct(
+    raw_expected_move_pct: float, normal_daily_vol_pct: float, non_event_trading_days: int
+) -> float:
+    # An option's price reflects the WHOLE period until expiration, not just an embedded
+    # event day. Variance is additive across independent days, so the event-specific variance
+    # is whatever's left after subtracting what this stock's own ordinary daily vol would
+    # explain over the non-event days - clipped at zero, since a bad volatility estimate or a
+    # too-long non-event window can otherwise subtract out more variance than was ever there.
+    total_variance = (raw_expected_move_pct / 100) ** 2
+    normal_variance = (normal_daily_vol_pct / 100) ** 2 * non_event_trading_days
+    earnings_variance = max(total_variance - normal_variance, 0.0)
+    return (earnings_variance ** 0.5) * 100
