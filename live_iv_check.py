@@ -1,10 +1,14 @@
 import sys
 import datetime
+import warnings
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from arch import arch_model
 from db import get_engine
 from backtest_math import isolate_earnings_move_pct, would_clip_to_zero
+
+warnings.filterwarnings("ignore", category=UserWarning, module="arch")
 
 DEFAULT_TICKERS = ["HOOD", "NVDA", "GOOGL"]
 MIN_EVENTS_FOR_BASELINE = 5
@@ -73,6 +77,27 @@ def current_daily_vol_pct(symbol: str, engine) -> float:
     ).sort_values("date")
     returns = prices["close"].pct_change().dropna()
     return float(returns.tail(20).std() * 100)
+
+
+def garch_forecast_daily_vol_pct(symbol: str, engine) -> float | None:
+    # garch_volatility_forecast.py already showed GARCH(1,1) tracks realized earnings-day
+    # moves measurably better than a flat rolling window (geomean jump ratio 1.06x vs 1.27x).
+    # Used here ONLY for the variance-netting step in live_expected_move, which just needs
+    # the best available estimate of "ordinary" daily vol - NOT for scaling the historical
+    # jump-ratio baseline, since that ratio was itself computed against rolling-window vol
+    # historically, and mixing the two would silently compare apples to oranges.
+    prices = pd.read_sql(
+        "SELECT close FROM daily_prices WHERE symbol = %(sym)s ORDER BY date", engine, params={"sym": symbol}
+    )
+    returns_pct = prices["close"].pct_change().dropna() * 100
+    if len(returns_pct) < 250:
+        return None
+    try:
+        res = arch_model(returns_pct, vol="GARCH", p=1, q=1, dist="normal").fit(disp="off")
+        forecast = res.forecast(horizon=1, reindex=False)
+        return float(forecast.variance.values[-1, 0] ** 0.5)
+    except Exception:
+        return None
 
 
 def _mid_price(row: pd.Series) -> float:
@@ -160,8 +185,14 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
                              f"events in this project's data, skipping (not a reliable baseline)")
             continue
         vol_now = current_daily_vol_pct(symbol, engine)
+        netting_vol = garch_forecast_daily_vol_pct(symbol, engine)
+        netting_vol_source = "GARCH(1,1) forecast"
+        if netting_vol is None:
+            netting_vol = vol_now
+            netting_vol_source = "20-day rolling (GARCH fit failed or insufficient history)"
+
         try:
-            live = live_expected_move(symbol, vol_now)
+            live = live_expected_move(symbol, netting_vol)
         except Exception as exc:
             messages.append(f"{symbol}: skipped, live data lookup failed ({exc})")
             continue
@@ -182,11 +213,12 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
             continue
         if live["variance_clipped"]:
             messages.append(
-                f"{symbol}: this stock's recent realized volatility ({vol_now:.2f}%/day) is high "
-                f"enough relative to its near-term option prices that netting it out over the "
-                f"non-event days would subtract more variance than the straddle actually costs. "
-                f"That's not a real 0% expected move, it means the netting assumption (volatility "
-                f"stays constant into the event) doesn't hold for this stock right now."
+                f"{symbol}: this stock's near-term volatility ({netting_vol_source}: "
+                f"{netting_vol:.2f}%/day) is high enough relative to its near-term option prices "
+                f"that netting it out over the non-event days would subtract more variance than "
+                f"the straddle actually costs. That's not a real 0% expected move, it means the "
+                f"netting assumption (volatility stays constant into the event) doesn't hold for "
+                f"this stock right now."
             )
             continue
 
@@ -200,6 +232,8 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
             "trading_days_to_expiration": live["trading_days_to_expiration"],
             "n_historical_events": h["n"],
             "current_20d_daily_vol_pct": round(vol_now, 2),
+            "netting_vol_pct": round(netting_vol, 2),
+            "netting_vol_source": netting_vol_source,
             "historical_geo_mean_jump_ratio": round(h["geo_mean_jump_ratio"], 2),
             "historical_typical_move_pct": round(historical_typical_move_pct, 2),
             "raw_straddle_expected_move_pct": round(live["raw_expected_move_pct"], 2),
@@ -221,7 +255,10 @@ def main() -> None:
     print(" market-implied expected move to what this project's own historical data says is typical for")
     print(" that specific stock. Unlike every other script here, this one is NOT a reproducible backtest,")
     print(" it queries live market data and today's earnings calendar, so the numbers below are a")
-    print(" snapshot as of whenever this is run, not a fixed historical result.)")
+    print(" snapshot as of whenever this is run, not a fixed historical result. The variance-netting")
+    print(" step uses a fresh GARCH(1,1) forecast per ticker for its own normal-vol estimate, since")
+    print(" garch_volatility_forecast.py already showed that beats a flat rolling window - falls back")
+    print(" to the rolling window only if the GARCH fit fails or there's too little history.)")
     print()
 
     symbols = sys.argv[1:] or DEFAULT_TICKERS

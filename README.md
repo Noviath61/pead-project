@@ -516,20 +516,29 @@ yfinance's free live options chains and earnings calendar, for the tickers I act
 
 For each ticker, it finds the next earnings date, prices the at-the-money straddle on the
 nearest expiration, and isolates the earnings-specific piece of that price using variance
-additivity: subtract out the variance this stock's own recent volatility would explain over
-the non-earnings trading days between now and expiration, since an option priced weeks out
-mostly reflects ordinary day-to-day movement, not the event itself. It then compares that
+additivity: subtract out the variance this stock's own near-term volatility would explain
+over the non-earnings trading days between now and expiration, since an option priced weeks
+out mostly reflects ordinary day-to-day movement, not the event itself. It then compares that
 isolated expected move to this specific ticker's own historical earnings-day pattern
 (the same `jump_ratio` computed in `volatility_risk_premium.py`, scaled by its current
 volatility) to get a "richness ratio": is the market pricing in more or less movement than
 this stock has actually delivered on past earnings days?
+
+That near-term volatility estimate uses a fresh GARCH(1,1) forecast per ticker, falling back
+to the 20-day rolling window only if the fit fails or there's too little history, since
+`garch_volatility_forecast.py` already showed GARCH tracks realized moves measurably better.
+Deliberately scoped to just that one step, though: the historical ratio itself was computed
+against rolling-window volatility throughout history, so scaling it by a *different* method's
+current-vol estimate would quietly compare apples to oranges. Swapping in GARCH only where it
+doesn't create that inconsistency is a small thing, but skipping it would mean not actually
+using the project's own best-known method somewhere it clearly applies.
 
 Run on 2026-07-21, the day before GOOGL's earnings and a week before HOOD's:
 
 | Ticker | Earnings date | Nearest expiration | Historical typical move | Market-implied move | Richness |
 |---|---|---|---|---|---|
 | GOOGL | 2026-07-22 | 2026-07-22 (1 trading day out) | 3.65% | 5.26% | 1.44x richer |
-| HOOD | 2026-07-29 | 2026-07-31 (8 trading days out) | 9.59% | 5.29% | 0.55x cheaper |
+| HOOD | 2026-07-29 | 2026-07-31 (8 trading days out) | 9.59% | 4.84% | 0.51x cheaper |
 | NVDA | 2026-08-26 | 2026-08-28 (28 trading days out) | - | - | skipped, too far out |
 
 NVDA is the honest part of this: its earnings are over a month away, and no closer weekly
@@ -557,22 +566,21 @@ data, or an unreliable netting assumption:
 
 | Ticker | Richness ratio |
 |---|---|
-| BA | 5.19x richer |
-| LMT | 3.30x richer |
+| BA | 4.65x richer |
+| LMT | 3.56x richer |
+| MSFT | 1.66x richer |
 | GOOGL | 1.44x richer |
-| MSFT | 1.42x richer |
-| TDOC | 1.25x richer |
-| AMZN | 1.11x richer |
-| HOOD | 0.55x cheaper |
-| META | 0.34x cheaper |
-| TSLA | 0.32x cheaper |
+| TDOC | 1.29x richer |
+| AMZN | 1.10x richer |
+| META | 0.58x cheaper |
+| HOOD | 0.51x cheaper |
+| TSLA | 0.46x cheaper |
 
 BA stands out: its own historical geometric-mean jump ratio is just 0.48x (49 events, a
 genuinely calm historical earnings reactor), but the market is currently pricing in an
-earnings-specific move of 4.56% against a historically-typical move of only 0.88% at its
-current volatility level, more than 5x. Plausible given Boeing's well-documented recent
-operational troubles, and exactly the kind of thing a screener across the whole universe
-catches that checking three names by hand wouldn't.
+earnings-specific move of about 4x its historically-typical reaction at current volatility.
+Plausible given Boeing's well-documented recent operational troubles, and exactly the kind of
+thing a screener across the whole universe catches that checking three names by hand wouldn't.
 
 Building the screener surfaced a second real bug, more general than the first: even within
 the 10-trading-day "reliable" horizon, if a stock's own recent realized volatility happens to
@@ -693,7 +701,10 @@ something I'd actually rerun before a real trade instead of a one-time report.
 `earnings_screener.py` scales that same comparison across the full 60-ticker universe in two
 passes (a cheap calendar check first, then the expensive options-chain pricing only for
 near-term reporters) and ranks the results, closer to a real screening tool than a
-single-ticker lookup.
+single-ticker lookup, and reuses `live_iv_check.py`'s comparison function directly rather than
+duplicating it, so the two tools can't drift apart. Both use a live GARCH(1,1) forecast for
+the volatility-netting step, since the project's own research already showed that beats a
+flat rolling window, applied carefully only where doing so doesn't mix inconsistent methods.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, a second suite of pure unit
