@@ -36,6 +36,27 @@ st.caption(
     "is stronger in less-covered stocks, as academic literature suggests."
 )
 
+with st.expander("What is this? (start here)", expanded=True):
+    st.markdown(
+        "This dashboard is the interactive companion to a research project testing "
+        "post-earnings announcement drift (PEAD) on **6,044 real earnings events across "
+        "125 stocks**, up to 20 years of history. Short answer: **no significant PEAD "
+        "effect anywhere**, tested well over a dozen independent ways, from simple "
+        "bucketing up to a full Fama-French 3-factor model and a compounded equity-curve "
+        "backtest. That null result held up, and got stronger, as the sample grew from "
+        "807 to 2,953 to 6,044 events.\n\n"
+        "The more interesting finding turned out to be volatility, not direction: "
+        "earnings days move several times a normal trading day for that same stock, "
+        "consistently enough that a naive historical-volatility-priced options strategy "
+        "loses money selling into it. Every section below is one piece of that story - "
+        "start with the correlation table, then use the sidebar to slice by tier or "
+        "sector, and scroll down for the volatility/options section and a live options-"
+        "chain check you can run on any ticker.\n\n"
+        "Full methodology, every limitation, and the code are in this project's "
+        "`README.md`. This page reads real results computed by the pipeline; it's a "
+        "viewer, not a live model."
+    )
+
 st.sidebar.header("Filters")
 tier_options = sorted(df["tier"].unique())
 sector_options = sorted(df["sector"].unique())
