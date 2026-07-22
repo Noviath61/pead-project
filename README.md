@@ -736,8 +736,11 @@ against real data on every push too, not just the SQL view against a synthetic f
 commands, a Streamlit dashboard covering both the PEAD and the volatility/options tracks, plus
 a live section that pulls real options-chain data on demand (button-gated and cached for 15
 minutes so it doesn't hammer yfinance on every rerun, verified end to end with
-`streamlit.testing.v1.AppTest` rather than just eyeballing it in a browser), with a
-static-snapshot fallback for when there's no live database, a narrative Jupyter notebook as
+`streamlit.testing.v1.AppTest` rather than just eyeballing it in a browser), a per-ticker
+jump-ratio and straddle-win-rate summary in the ticker drill-down section so browsing a
+specific stock's history and its volatility profile don't live in two disconnected places,
+with a static-snapshot fallback for when there's no live database, a narrative Jupyter
+notebook as
 a companion to the pipeline scripts, and a shared
 `db.py` module (`get_engine()`) that the 25+ analysis scripts now all import instead of each
 repeating its own copy of the same connection-string boilerplate, a straightforward DRY

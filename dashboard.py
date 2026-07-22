@@ -219,6 +219,27 @@ st.divider()
 st.subheader("Ticker drill-down")
 symbol = st.selectbox("Symbol", options=sorted(filtered["symbol"].unique()))
 ticker_df = filtered[filtered["symbol"] == symbol].sort_values("reported_date")
+
+try:
+    ticker_jump = pd.read_csv("snapshot/volatility_jump.csv")
+    ticker_jump = ticker_jump[(ticker_jump["symbol"] == symbol) & (ticker_jump["jump_ratio"] > 0)]
+    ticker_straddle = pd.read_csv("snapshot/straddle_pnl.csv")
+    ticker_straddle = ticker_straddle[ticker_straddle["symbol"] == symbol]
+    if len(ticker_jump) >= 5:
+        dcol1, dcol2, dcol3 = st.columns(3)
+        ticker_geo_mean = np.exp(np.log(ticker_jump["jump_ratio"]).mean())
+        dcol1.metric(f"{symbol}'s own geometric mean jump ratio", f"{ticker_geo_mean:.2f}x",
+                     help="This ticker's earnings-day move vs. its own normal day, historically")
+        dcol2.metric(f"{symbol}'s historical events", len(ticker_jump))
+        if len(ticker_straddle) > 0:
+            win_rate = (ticker_straddle["pnl_pct"] > 0).mean() * 100
+            dcol3.metric(f"{symbol}'s straddle win rate", f"{win_rate:.1f}%")
+    else:
+        st.caption(f"Fewer than 5 historical events with a clean volatility estimate for {symbol}, "
+                   f"not enough for a per-ticker jump-ratio baseline.")
+except FileNotFoundError:
+    pass
+
 st.dataframe(
     ticker_df[["reported_date", "report_time", "surprise_percentage", "day0_date",
                "drift_10d_pct", "abnormal_drift_10d_pct", "volume_spike_ratio", "volatility_change_ratio"]],
