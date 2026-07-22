@@ -419,8 +419,8 @@ than everything else, and Defense barely clears a normal trading day at all.
 code("""\
 vol_by_sector = pd.DataFrame({
     "sector": ["Tech", "Healthcare", "Consumer", "Industrials", "Financials", "Defense"],
-    "n_events": [942, 389, 617, 256, 551, 196],
-    "mean_jump_ratio": [3.23, 2.42, 2.19, 1.87, 1.85, 0.96],
+    "n_events": [946, 390, 622, 258, 552, 196],
+    "mean_jump_ratio": [3.22, 2.42, 2.17, 1.87, 1.85, 0.96],
 })
 vol_by_sector
 """)

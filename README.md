@@ -164,8 +164,10 @@ elsewhere isn't because the pipeline is broken.
 ### Event study and placebo check
 
 Average daily abnormal return, 10 days before to 20 after Day 0, cumulated. Abnormal return
-spikes right on Day 0 (+0.61% mean vs. ~0.03-0.13% on other days), then the curve goes flat.
-The market reprices instantly here, it doesn't drift.
+spikes right on Day 0 (+0.46% mean, versus roughly -0.12% to +0.18% on every other day in
+the window), and day-to-day volatility more than triples (std 6.94% at Day 0 versus 1.9-2.3%
+everywhere else), then the curve goes flat. The market reprices instantly here, it doesn't
+drift.
 
 ![Cumulative abnormal return around Day 0](charts/event_study_car.png)
 
@@ -298,11 +300,11 @@ hides:
 
 | Sector | n events | Mean jump ratio |
 |---|---|---|
-| Tech | 942 | 3.23x |
-| Healthcare | 389 | 2.42x |
-| Consumer | 617 | 2.19x |
-| Industrials | 256 | 1.87x |
-| Financials | 551 | 1.85x |
+| Tech | 946 | 3.22x |
+| Healthcare | 390 | 2.42x |
+| Consumer | 622 | 2.17x |
+| Industrials | 258 | 1.87x |
+| Financials | 552 | 1.85x |
 | Defense | 196 | 0.96x |
 
 Tech runs the hottest by a wide margin, more than double most other sectors. Defense is the
