@@ -1,0 +1,78 @@
+name: Earnings screener history
+
+on:
+  schedule:
+    - cron: "0 12 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pead_user
+          POSTGRES_PASSWORD: pead_ci_pw
+          POSTGRES_DB: pead
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_USER: pead_user
+      POSTGRES_PASSWORD: pead_ci_pw
+      POSTGRES_DB: pead
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply schema and view
+        run: |
+          psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" -f schema.sql
+          psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" -f migrate_tiers.sql
+          psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" -f migrate_lineage.sql
+          psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" -f schema_ff_factors.sql
+          psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" -f create_view.sql
+
+      - name: Load the full historical dataset
+        run: python load_full_dataset.py
+
+      - name: Run the earnings screener
+        run: |
+          mkdir -p screener_history
+          today=$(date -u +%F)
+          {
+            echo "# Earnings screener: $today"
+            echo
+            echo '```'
+            python earnings_screener.py
+            echo '```'
+          } > "screener_history/$today.md"
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add screener_history/
+          git diff --staged --quiet && echo "Nothing new to commit" && exit 0
+          today=$(date -u +%F)
+          git commit -m "Earnings screener snapshot: $today [skip ci]"
+          git push

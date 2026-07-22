@@ -603,6 +603,22 @@ a hand-picked list of tickers is also built into the dashboard (button-gated, so
 yfinance when asked, and cached for 15 minutes), for anyone who'd rather click than run a
 script.
 
+### Running the screener on a schedule
+
+Now that the full dataset loads in seconds (see below), running the historical baseline
+query in CI stopped being the blocker it would have been. `.github/workflows/screener_history.yml`
+runs `earnings_screener.py` on a schedule (weekdays, 12:00 UTC, plus manual triggering) against
+a freshly loaded database, and commits whatever it finds to `screener_history/YYYY-MM-DD.md`.
+
+The point isn't the automation for its own sake, it's that `live_iv_check.py` and
+`earnings_screener.py` are the one part of this project meant to be rerun regularly rather
+than read once, and a scheduled job that just does that automatically, keeping every day's
+result including the uninteresting "too far out" and "variance clipped" skips, not just the
+notable hits, is a more honest record than remembering to run it by hand whenever I think of
+it. A failed run (yfinance being unreachable or rate-limiting that day, most likely) just
+means a missing day, not bad data, since nothing else in this project depends on this
+directory existing or being complete.
+
 ## Limitations
 
 - Survivorship bias: this universe was picked as well-known companies today, which by
@@ -654,6 +670,9 @@ script.
   decade of quarters). Results are only shown when the nearest expiration is within 10 trading
   days of today AND the variance subtraction doesn't clip to zero, since either case means the
   underlying assumption has broken down for that specific ticker
+- The scheduled screener workflow depends on yfinance's undocumented public endpoints staying
+  reachable and unthrottled from GitHub's runners; a failed day is expected occasionally and
+  isn't treated as anything more than a missing snapshot
 
 ## What this demonstrates
 
@@ -722,7 +741,11 @@ static-snapshot fallback for when there's no live database, a narrative Jupyter 
 a companion to the pipeline scripts, and a shared
 `db.py` module (`get_engine()`) that the 25+ analysis scripts now all import instead of each
 repeating its own copy of the same connection-string boilerplate, a straightforward DRY
-cleanup that got more worth doing as the script count grew past two dozen.
+cleanup that got more worth doing as the script count grew past two dozen, and a second
+scheduled GitHub Actions workflow that loads the full dataset, runs the earnings screener,
+and commits the result back to the repo (with `[skip ci]` so the bot's own commit doesn't
+trigger a redundant full test run), a real (if small) example of CI/CD automation beyond
+just gating pull requests.
 
 **A bug in the project's own safety net**: the test suite had a fixture that assumed a date
 range would always be free of real data. True when I wrote it, false once I extended real
