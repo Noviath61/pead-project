@@ -4,10 +4,12 @@ from db import get_engine
 
 engine = get_engine()
 
+n_tickers = pd.read_sql("SELECT COUNT(*) AS n FROM ticker_tiers", engine).iloc[0]["n"]
+
 print("=== Exporting the full historical dataset for reproducibility ===")
 print("(Every analysis script here needs a populated database, and getting there from")
-print(" scratch means re-ingesting 20 years of data across 60 tickers through two")
-print(" rate-limited free APIs, which took real elapsed time originally (Alpha Vantage's")
+print(f" scratch means re-ingesting 20 years of data across {n_tickers} tickers through free,")
+print(" often rate-limited APIs, which took real elapsed time originally (Alpha Vantage's")
 print(" key alone stayed rate-limited over 24 hours across two calendar days at one point).")
 print(" That's a real reproducibility gap: anyone cloning this repo to check the work")
 print(" couldn't actually run it without spending that same time and their own API keys.")

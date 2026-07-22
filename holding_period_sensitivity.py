@@ -16,7 +16,7 @@ print(" live_iv_check.py for a real trade found that assumption has a real blind
 print(" actual holding period an option runs (from before the report to actual expiration)")
 print(" isn't always 1 trading day, and the extra days add real, independent variance, not")
 print(" just noise around the first day's number. This applies that same lesson to the full")
-print(" 20-year, 60-ticker dataset instead of one ticker on one night: reprice the straddle and")
+print(" 20-year, multi-ticker dataset instead of one ticker on one night: reprice the straddle and")
 print(" iron condor backtests at 1, 2, 3, and 5 trading days of assumed holding period, and see")
 print(" whether the conclusion (loses money, historically) holds up as that period grows.")
 print()

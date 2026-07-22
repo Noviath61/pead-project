@@ -21,8 +21,8 @@ Does a stock keep drifting after it beats or misses earnings, or does the market
 reprice instantly and move on? And is that effect actually stronger in smaller,
 less-covered stocks, the way the literature claims?
 
-This notebook walks through what I found: 2,953 earnings events across 60 stocks (20
-large/20 mid/20 small-cap), tested well over a dozen different ways, plus a separate track
+This notebook walks through what I found: 6,044 earnings events across 125 stocks (roughly
+41 large/42 mid/42 small-cap), tested well over a dozen different ways, plus a separate track
 on earnings-day volatility and options pricing that's closer to how I actually trade around
 these dates. `README.md` in this repo has the full methodology writeup; this notebook is
 more of a results tour, with the actual charts and tables rendered inline so you don't have
@@ -260,7 +260,7 @@ md("""\
 ## 5. Placebo check: is even the small post-Day-0 drift earnings-specific?
 
 A raw test of "any positive drift in the 20 days after Day 0" (ignoring surprise direction)
-does come back statistically significant on its own: mean +0.58%, p=0.0003, per event.
+does come back statistically significant on its own: mean +0.55%, p<0.0001, per event.
 Before I trusted that, I wanted to know whether random, non-earnings days for the same
 stocks show the same thing.
 
@@ -272,11 +272,11 @@ instead of a copy of that script:
 
 | | Mean CAR (day +1 to +20) |
 |---|---|
-| Real earnings-day events (n=2,953) | +0.580% |
-| Placebo distribution across 100 runs of random non-earnings days | mean +0.783%, range +0.255% to +1.454% |
+| Real earnings-day events (n=6,044) | +0.546% |
+| Placebo distribution across 100 runs of random non-earnings days | mean +0.729%, range +0.523% to +1.034% |
 
 Empirical p-value (fraction of the 100 random-day runs with a mean at least as large as the
-real earnings-day result): 0.860.
+real earnings-day result): 0.960.
 
 The real earnings-day effect sits in the lower half of the placebo distribution. Random,
 non-earnings days show this "drift" just as much, usually more. It isn't earnings-specific;
@@ -293,11 +293,10 @@ expectation instead. See `market_model.py` for the implementation: beta estimate
 250-day window ending 30 days before each event, so the event itself can never leak into the
 estimate.
 
-Average beta across this sample is 1.13, which means these are higher-than-market-sensitivity
-stocks, so the simpler method was quietly crediting some of that generic extra sensitivity to
-"abnormal" earnings movement. Once properly beta-adjusted, the post-Day-0 continuation drift
-almost entirely disappears: mean CAR change from Day 0 to Day +20 is -0.065% (p=0.701), not
-remotely significant, and the curve actually declines slightly instead of climbing.
+Average beta across this sample is 1.04 (median 1.02), meaning these stocks move roughly in
+line with the market now that the universe is broader. The post-Day-0 continuation drift
+stays small and insignificant either way: mean CAR change from Day 0 to Day +20 is +0.091%
+(p=0.389), not remotely significant.
 """)
 
 md("""\
@@ -309,8 +308,8 @@ Ken French's public data library, the same source used in actual academic asset-
 research. Same pre-event window and 30-day gap as the market model, just three factors
 instead of one. See `load_ff_factors.py` and `fama_french_model.py` for the implementation.
 
-Result: CAR is +0.462% at Day 0 and actually declines to +0.228% by Day +20 rather than
-climbing. The formal continuation test isn't significant either (mean -0.234%, p=0.139).
+Result: CAR is +0.337% at Day 0 and actually declines to +0.271% by Day +20 rather than
+climbing. The formal continuation test isn't significant either (mean -0.066%, p=0.504).
 Even the most sophisticated model I tried agrees with everything else here.
 """)
 
@@ -318,7 +317,7 @@ md("""\
 ## 8. A real equity curve, not just a pooled average
 
 The naive strategy check above (long "big beat", short "big miss") is a single pooled number
-across all 1,182 qualifying trades. That hides what actually matters if you traded this
+across all 2,412 qualifying trades. That hides what actually matters if you traded this
 through time: does the account survive, and what does the ride look like along the way?
 `backtest_equity_curve.py` sequences every trade by its actual Day-0 date and compounds a real
 equity curve instead of averaging.
@@ -376,8 +375,8 @@ plt.show()
 """)
 
 md("""\
-Sharpe ratio comes out negative (-0.36), with a -41% max drawdown over 19.7 years and a
-47.5% win rate. A real tradeable long-short strategy generally wants a Sharpe comfortably
+Sharpe ratio comes out negative (-0.44), with a -58% max drawdown over 19.8 years and a
+46.5% win rate. A real tradeable long-short strategy generally wants a Sharpe comfortably
 above 1.0. This isn't close, on a risk-adjusted basis just like everywhere else.
 """)
 
@@ -393,19 +392,19 @@ move.
 
 There's no options-chain data in this project, so implied volatility itself isn't measurable
 here. What is measurable from price data already in the database is the realized side: the
-earnings-day move averaged 2.37x a normal day for that stock (1.27x at the geometric mean,
-the fairer summary given how right-skewed this ratio is), beating a normal day outright 61.6%
-of the time, confirmed with a one-sided test on the log ratio (t=9.99, p=1.9e-23). Broken out
-by tier, the jump is biggest in small-caps and smallest in large-caps, the same coverage
+earnings-day move averaged 2.28x a normal day for that stock (1.19x at the geometric mean,
+the fairer summary given how right-skewed this ratio is), beating a normal day outright 59.7%
+of the time, confirmed with a one-sided test on the log ratio (t=10.34, p=3.8e-25). Broken out
+by tier, the jump is biggest in mid/small-caps and smallest in large-caps, the same coverage
 pattern as everywhere else in this project, just seen through a different lens.
 """)
 
 code("""\
 vol_by_tier = pd.DataFrame({
     "tier": ["large", "mid", "small"],
-    "n_events": [1243, 835, 886],
-    "mean_jump_ratio": [2.21, 2.34, 2.62],
-    "median_jump_ratio": [1.45, 1.45, 1.55],
+    "n_events": [2269, 1911, 1889],
+    "mean_jump_ratio": [1.95, 2.47, 2.47],
+    "median_jump_ratio": [1.15, 1.51, 1.43],
 })
 vol_by_tier
 """)
@@ -413,14 +412,16 @@ vol_by_tier
 md("""\
 Tier can't see sector, though, since every tier mixes all six sectors together. Cutting the
 same jump ratio by sector instead turns up something tier alone hides: Tech runs far hotter
-than everything else, and Defense barely clears a normal trading day at all.
+than everything else. Widening the ticker universe changed the bottom of this ranking -
+Defense used to be the calmest sector (0.96x, on just 4 original tickers); Financials is now
+the calmest (1.55x), with Defense actually third-hottest once more Defense names were added.
 """)
 
 code("""\
 vol_by_sector = pd.DataFrame({
-    "sector": ["Tech", "Healthcare", "Consumer", "Industrials", "Financials", "Defense"],
-    "n_events": [946, 390, 622, 258, 552, 196],
-    "mean_jump_ratio": [3.22, 2.42, 2.17, 1.87, 1.85, 0.96],
+    "sector": ["Tech", "Healthcare", "Consumer", "Defense", "Industrials", "Financials"],
+    "n_events": [1528, 950, 1128, 584, 747, 1132],
+    "mean_jump_ratio": [3.35, 2.38, 2.18, 1.68, 1.65, 1.55],
 })
 vol_by_sector
 """)
@@ -451,34 +452,34 @@ code("""\
 # see straddle_backtest.py for the full standalone SQL and computation.
 straddle_summary = pd.DataFrame({
     "tier": ["large", "mid", "small"],
-    "n": [1243, 835, 886],
-    "mean_pnl_pct": [-2.44, -3.39, -3.14],
-    "win_rate_pct": [31.9, 32.0, 30.2],
+    "n": [2269, 1911, 1889],
+    "mean_pnl_pct": [-1.79, -2.86, -2.96],
+    "win_rate_pct": [37.7, 30.6, 31.5],
 })
 straddle_summary
 """)
 
 md("""\
-It loses money, clearly and consistently: mean P&L of -2.92% of the stock's price per trade
-(p=2.8e-180), a win rate of only 31.4%, and losses in every tier. Implied vol would need to
-run at roughly 2.6x the trailing historical level just to break even on average, which is
+It loses money, clearly and consistently: mean P&L of -2.49% of the stock's price per trade
+(p<0.0001), a win rate of only 33.5%, and losses in every tier. Implied vol would need to
+run at roughly 2.5x the trailing historical level just to break even on average, which is
 actually within the range real earnings implied-vol run-ups reach in practice. That's not a
 counterexample to selling options for a living, it's a lower bound: this project has no
 options-chain data to say whether real-world IV clears that bar by enough to be profitable
 net of realistic spreads, but pricing off historical vol alone clearly isn't good enough.
 
-By sector, the same pattern from the jump ratio shows up on the P&L side: Tech is the worst
-sector to sell this trade into by a wide margin, and Defense comes out close to a coin flip,
-roughly breakeven on both P&L and win rate. Same underlying pattern, seen from the volatility
-side and the P&L side.
+By sector, a similar but not identical pattern from the jump ratio shows up on the P&L side:
+Tech is still the worst sector to sell this trade into by a wide margin, but Financials now
+comes closest to breakeven on P&L, while Defense and Industrials tie for the best win rate -
+a reordering from the original 60-ticker run, where Defense alone looked like a coin flip.
 """)
 
 code("""\
 straddle_by_sector = pd.DataFrame({
-    "sector": ["Tech", "Healthcare", "Consumer", "Industrials", "Financials", "Defense"],
-    "n": [946, 390, 622, 258, 552, 196],
-    "mean_pnl_pct": [-4.80, -2.90, -2.48, -1.75, -1.74, -0.13],
-    "win_rate_pct": [21.0, 34.9, 37.3, 36.4, 31.0, 51.0],
+    "sector": ["Tech", "Consumer", "Healthcare", "Defense", "Industrials", "Financials"],
+    "n": [1528, 1128, 950, 584, 747, 1132],
+    "mean_pnl_pct": [-4.47, -2.54, -2.52, -1.51, -1.16, -1.14],
+    "win_rate_pct": [20.7, 34.8, 34.7, 41.1, 41.1, 39.7],
 })
 straddle_by_sector
 """)
@@ -498,7 +499,7 @@ real edge somewhat, since real wings cost part of the credit to buy.
 code("""\
 condor_summary = pd.DataFrame({
     "structure": ["Naked straddle (uncapped)", "Iron condor (3x credit cap)"],
-    "mean_pnl_pct": [-2.92, -1.72],
+    "mean_pnl_pct": [-2.49, -1.45],
     "worst_single_event_pct": [-50.1, -17.6],
 })
 condor_summary
@@ -507,7 +508,7 @@ condor_summary
 md("""\
 Capping the loss doesn't just trim the tail, it noticeably improves the average too, because
 the naked version's left tail is fat enough that a handful of catastrophic single events were
-dragging the average down harder than the typical trade. The cap actually bound on 24.5% of
+dragging the average down harder than the typical trade. The cap actually bound on 23.0% of
 events, and the pattern holds across a range of wing widths (2x to 6x credit tested in
 `iron_condor_backtest.py`).
 
@@ -528,7 +529,7 @@ for volatility clustering (calm and choppy periods persisting) instead of weight
 a genuinely more sophisticated model changes the jump-ratio and straddle-pricing conclusions.
 
 One honest caveat: the market model and Fama-French sections above fit only on a clean
-pre-event window specifically to avoid lookahead bias. Refitting GARCH before each of ~2,950
+pre-event window specifically to avoid lookahead bias. Refitting GARCH before each of ~6,000
 individual events would be its own project, so this fits one GARCH model per ticker on its
 full available history instead, meaning the fitted parameters carry mild lookahead bias (the
 daily forecast itself still only conditions on information through the prior day). Good
@@ -539,28 +540,33 @@ point-in-time discipline used above.
 code("""\
 garch_summary = pd.DataFrame({
     "method": ["Rolling 20-day", "GARCH(1,1)"],
-    "geomean_jump_ratio": [1.27, 1.06],
-    "p_value": ["1.9e-23", "8.1e-03"],
-    "straddle_breakeven_multiplier": [2.65, 2.23],
+    "geomean_jump_ratio": [1.19, 1.00],
+    "p_value": ["3.8e-25", "4.3e-01"],
+    "straddle_breakeven_multiplier": [2.54, 2.18],
 })
 garch_summary
 """)
 
 md("""\
-The two volatility estimates agree in shape (Spearman r=0.893) but aren't the same number.
+The two volatility estimates agree in shape (Spearman r=0.896) but aren't the same number.
 GARCH comes out measurably closer to the actual realized move (geometric mean jump ratio
-1.06x versus 1.27x), and the straddle backtest's breakeven multiplier drops from 2.65x to
-2.23x. Both are still statistically real, just smaller. A genuinely better model gets closer
-but doesn't close the gap, which makes sense: neither model has any way to know an earnings
-date is coming, since both are purely backward-looking. That remaining gap is exactly the
-volatility risk premium options markets price in ahead of an earnings date, information a
-time-series model structurally can't have no matter how sophisticated it gets.
+1.00x versus 1.19x). At this wider sample, the GARCH-based ratio is no longer statistically
+distinguishable from 1.0 (p=0.43), a genuinely different result from the original 60-ticker
+check, not just a smaller version of the same one. That doesn't mean GARCH-priced straddles
+stop losing money, though: Brenner-Subrahmanyam prices the straddle at *0.8x* daily
+volatility, not 1.0x, so even a jump ratio averaging almost exactly 1.0 still means the
+realized move typically exceeds the premium collected. The straddle backtest's breakeven
+multiplier still drops from 2.54x to 2.18x under GARCH pricing, closer to realistic but not
+closing the gap, which makes sense: neither model has any way to know an earnings date is
+coming, since both are purely backward-looking. That remaining gap is exactly the volatility
+risk premium options markets price in ahead of an earnings date, information a time-series
+model structurally can't have no matter how sophisticated it gets.
 """)
 
 md("""\
 `garch_volatility_forecast.py` only reported that gap as a single summary statistic (the
 breakeven multiplier), though, never rebuilt the actual straddle and iron condor backtests
-with GARCH pricing end to end. `garch_straddle_backtest.py` closes that: same 2,964 events,
+with GARCH pricing end to end. `garch_straddle_backtest.py` closes that: same 6,069 events,
 same Brenner-Subrahmanyam formula, same 3x-credit iron condor cap, priced off GARCH
 volatility instead of the rolling window, apples to apples on the identical sample.
 """)
@@ -569,8 +575,8 @@ code("""\
 garch_backtest_summary = pd.DataFrame({
     "metric": ["Mean P&L, naked straddle", "Win rate", "Breakeven IV multiplier",
                "Mean P&L, 3x-credit iron condor", "Worst single event, iron condor"],
-    "rolling_20day": ["-2.92%", "31.4%", "2.64x", "-1.72%", "-17.6%"],
-    "garch": ["-2.58%", "36.1%", "2.22x", "-1.70%", "-18.9%"],
+    "rolling_20day": ["-2.49%", "33.5%", "2.53x", "-1.45%", "-17.6%"],
+    "garch": ["-2.22%", "37.9%", "2.17x", "-1.44%", "-18.9%"],
 })
 garch_backtest_summary
 """)
@@ -607,10 +613,12 @@ print(f"Share of events with elevated post-event volatility (ratio > 1): {pct_el
 """)
 
 md("""\
-Geometric mean 0.94, median 0.95, both below 1, confirmed with a one-sided log-scale t-test
-(t=-7.58, p=2.3e-14). If anything, realized volatility in the ten days after an earnings event
-runs slightly *below* the stock's own normal level, not elevated, and it doesn't depend on how
-big the surprise was (Spearman r=0.015 against |surprise %|, not distinguishable from zero).
+Geometric mean 0.93, median 0.93, both below 1, confirmed with a one-sided log-scale t-test
+(t=-12.75, p=4.8e-37). If anything, realized volatility in the ten days after an earnings event
+runs slightly *below* the stock's own normal level, not elevated (the arithmetic mean, 1.03,
+sits just above 1, but that's right skew from a handful of large spikes, exactly why the
+geometric mean is the fairer summary), and it doesn't depend on how big the surprise was
+(Spearman r=0.016 against |surprise %|, p=0.205, not distinguishable from zero).
 
 Combined with the event study (drift is flat after Day 0) and the volatility jump analysis
 (the reaction concentrates almost entirely on Day 0 itself), this is the same "one-time jump,
@@ -633,9 +641,9 @@ ticker together.
 code("""\
 bootstrap_summary = pd.DataFrame({
     "tier": ["large", "mid", "small"],
-    "observed_r": [0.006, -0.000, -0.022],
-    "naive_ci_width": [0.123, 0.146, 0.138],
-    "cluster_ci_width": [0.126, 0.125, 0.098],
+    "observed_r": [-0.004, -0.016, 0.010],
+    "naive_ci_width": [0.090, 0.096, 0.097],
+    "cluster_ci_width": [0.092, 0.093, 0.080],
 })
 bootstrap_summary["cluster_over_naive"] = (
     bootstrap_summary["cluster_ci_width"] / bootstrap_summary["naive_ci_width"]
@@ -664,18 +672,18 @@ Fixing `live_iv_check.py` for a real trade (see section 17 below) exposed a blin
 single day, but a real option's holding period (from before the report to actual expiration)
 isn't always 1 trading day, and the extra days add real, independent variance, not just noise
 around the first day's number. `holding_period_sensitivity.py` applies that same lesson to the
-full 20-year, 60-ticker dataset instead of one ticker on one night: reprice both backtests at
+full 20-year, 125-ticker dataset instead of one ticker on one night: reprice both backtests at
 1, 2, 3, and 5 trading days of assumed holding period and see whether the conclusion holds up.
 """)
 
 code("""\
 holding_period_summary = pd.DataFrame({
     "N_trading_days": [1, 2, 3, 5],
-    "n_events": [2964, 2963, 2960, 2957],
-    "mean_pnl_uncapped_pct": [-3.07, -2.89, -2.80, -2.56],
-    "win_rate_pct": [29.6, 35.1, 36.5, 39.6],
-    "breakeven_iv_multiple": [2.86, 2.24, 1.98, 1.69],
-    "mean_pnl_condor_pct": [-1.82, -1.93, -2.03, -2.01],
+    "n_events": [6068, 6065, 6061, 6055],
+    "mean_pnl_uncapped_pct": [-2.64, -2.52, -2.41, -2.16],
+    "win_rate_pct": [30.9, 35.4, 37.4, 41.5],
+    "breakeven_iv_multiple": [2.77, 2.20, 1.93, 1.65],
+    "mean_pnl_condor_pct": [-1.55, -1.70, -1.75, -1.70],
     "worst_condor_pct": [-17.6, -23.3, -28.5, -36.8],
 })
 holding_period_summary
@@ -687,7 +695,7 @@ specifically that night. Historically, across the whole dataset, it's the opposi
 naked position: mean P&L improves (less negative) and the breakeven IV multiple needed drops
 as N grows. The explanation ties directly back to section 13 above: Brenner-Subrahmanyam's
 sqrt(T) scaling assumes the same daily volatility holds for every day in the holding period,
-but realized volatility after an event reverts toward normal (geometric mean ratio 0.94), not
+but realized volatility after an event reverts toward normal (geometric mean ratio 0.93), not
 staying elevated. Pricing a longer straddle as if every day were as volatile as the event day
 itself means systematically over-collecting premium for the calmer days that follow, which
 works in the seller's favor here, on average, historically.
@@ -708,7 +716,58 @@ scripts; for pre-market reporters it's one day later than day0.)
 """)
 
 md("""\
-## 16. A few more angles
+## 16. Does any of this depend on the broader market's mood?
+
+Every test above pools 20 years together, calm markets and stressed ones alike.
+`vix_regime_analysis.py` pulls in something this project hadn't used before, the VIX index
+itself (free via yfinance, decades of history), and conditions the two headline questions -
+does surprise size predict drift, and does selling premium into earnings pay off - on the
+market-wide volatility regime at the time, using standard textbook VIX bands (below 15 calm,
+15-25 normal, above 25 stressed) rather than sample-dependent terciles.
+""")
+
+code("""\
+vix_pead_summary = pd.DataFrame({
+    "vix_regime": ["Low (<15, calm)", "Medium (15-25, normal)", "High (>25, stressed)"],
+    "n": [2217, 3018, 809],
+    "spearman_r": [0.014, -0.020, -0.009],
+    "p_value": [0.524, 0.268, 0.788],
+})
+vix_pead_summary
+""")
+
+md("""\
+The PEAD null holds in every regime individually, not just on average across them (pooled
+r=-0.004, p=0.737, the same order of magnitude as each slice above): there's no calm-market
+or stressed-market subset where surprise size starts predicting drift.
+""")
+
+code("""\
+vix_vol_summary = pd.DataFrame({
+    "vix_regime": ["Low (<15, calm)", "Medium (15-25, normal)", "High (>25, stressed)"],
+    "geomean_jump_ratio": [1.24, 1.21, 1.00],
+    "mean_straddle_pnl_pct": [-2.43, -2.63, -2.14],
+    "win_rate_pct": [32.5, 33.9, 35.1],
+})
+vix_vol_summary
+""")
+
+md("""\
+Going in, I expected the opposite of what this shows: a short-vol earnings position at its
+worst exactly when the broader market is already stressed, a double whammy rather than a
+diversifying bet. Instead the jump ratio is smallest and straddle P&L is least bad in the
+high-VIX bucket. The reconciliation: both the jump ratio's denominator and the straddle's
+Brenner-Subrahmanyam price are keyed off the same trailing 20-day volatility for that specific
+stock, and single-stock realized vol is itself elevated in high-VIX regimes, not just the
+index. The "normal day" baseline these percentage-based metrics compare against is already
+inflated exactly when VIX is high, which mechanically shrinks the relative jump ratio and
+richens the credit collected, even though the absolute earnings-day move isn't obviously
+smaller in dollar terms. A real property of vol-scaled metrics, not evidence that a stressed
+market makes earnings positions safer in absolute terms.
+""")
+
+md("""\
+## 17. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -751,7 +810,7 @@ would have broken any naive SQL query. Fixed at the source and reran everything 
 """)
 
 md("""\
-## 17. A live version of the same question
+## 18. A live version of the same question
 
 Everything above is a fixed historical backtest with no options-chain data, a limitation
 named honestly throughout. `live_iv_check.py` closes that gap using yfinance's free live
@@ -762,7 +821,7 @@ that price (netting out ordinary volatility over any non-event days between now 
 expiration, since a far-out option mostly reflects normal day-to-day movement), and compares
 it to that specific ticker's own historical earnings-day pattern.
 
-`earnings_screener.py` scales the same comparison across all 60 tracked tickers instead of
+`earnings_screener.py` scales the same comparison across all 125 tracked tickers instead of
 one at a time: a cheap calendar-only pass finds who reports soon, then the full options-chain
 pricing runs only on that shorter list, and the results get ranked by how rich or cheap
 current pricing looks relative to each stock's own history.
@@ -771,15 +830,18 @@ Deliberately not reproduced here with numbers: unlike everything else in this no
 their output is a live snapshot that's already stale by the time anyone else runs it, prices,
 dates, and available expirations all move. These are the one part of this project meant to
 actually be rerun before a real trade rather than read as a fixed result. See `README.md`
-for a sample run and the full methodology, including four real bugs this caught: two during
+for a sample run and the full methodology, including five real bugs this caught: two during
 development (a too-far-out expiration making the variance-netting math go negative, and a
 closer-in name still clipping to zero because its own volatility was running hot relative to
-its near-term options), and two more from actually using it for a real trade the night before
+its near-term options), two more from actually using it for a real trade the night before
 real GOOGL earnings - the wrong options contract getting silently selected for an after-hours
-reporter, and a historical baseline measured over the wrong number of trading days. Fixing
-those two changed GOOGL's actual conclusion that night from "1.44x richer" to "0.74x cheaper,"
-same ticker, same night, opposite answer - the strongest evidence in this project for why a
-live tool needs real use, not just unit tests, to actually get right.
+reporter, and a historical baseline measured over the wrong number of trading days, which
+together changed GOOGL's actual conclusion that night from "1.44x richer" to "0.74x cheaper,"
+same ticker, same night, opposite answer - and a fifth from widening the ticker universe
+itself: four new, thinly-traded names crashed with a raw `IndexError` on an options chain
+with zero listed contracts, a case none of the original 60 tickers happened to trigger. The
+pattern across all five: each was invisible against a small, familiar set of tickers and only
+showed up once the tool was pointed at something wider or more real.
 """)
 
 md("""\
@@ -793,7 +855,9 @@ market model, a full Fama-French 3-factor model, a compounded equity-curve backt
 sector-level cut, alternate signals, economic significance, survivorship bias, and a formal
 power analysis. The coverage hypothesis didn't hold up either. Every tier stayed statistically
 indistinguishable from zero, and the estimates converged closer to zero, not further from it,
-as the sample grew from 807 to 2,953 events.
+as the sample grew from 807 to 2,953 to 6,044 events (first as the original backtest matured,
+again after widening the ticker universe from 60 to 125), and holds up in every VIX regime
+tested too, not just on average across them.
 
 Separately from PEAD, the volatility jump analysis found something that is real and
 statistically strong: earnings-day moves run several times a normal trading day, more so in
@@ -801,26 +865,28 @@ less-covered stocks. That's not a PEAD signal, it's the actual empirical basis f
 carry elevated implied volatility into an earnings date in the first place, and the closest
 thing in this project to the part of the market I actually trade day to day. Pricing an
 at-the-money straddle off historical volatility alone and selling it into every event loses
-money clearly (p=2.8e-180), which puts a number on how much richer than historical vol real
+money clearly (p<0.0001), which puts a number on how much richer than historical vol real
 implied vol has to run just to break even, a genuinely useful lower bound even without
 options-chain data to check it against directly. Capping that same trade's loss with an iron
 condor instead of a naked straddle improves the average outcome and shrinks the worst case
 dramatically (-50% down to -18%), the real reason options traders size earnings positions
 with defined risk in the first place. Swapping in a GARCH(1,1) model instead of a flat
-rolling window gets closer to the realized move (geometric mean jump ratio 1.06x versus
-1.27x) but doesn't close the gap, since no purely backward-looking time-series model can know
-an earnings date is coming, confirmed by rerunning the full straddle and iron condor
-backtests with GARCH pricing end to end rather than trusting a single summary statistic
-(mean P&L improves from -2.92% to -2.58%, same conclusion either way). And the volatility
-itself doesn't linger,
-realized volatility in the ten days after an event actually reverts slightly below normal
-(p=2.3e-14), the same "one-time jump, not a regime change" story as the price-drift result,
-just measured a different way.
+rolling window gets closer to the realized move (geometric mean jump ratio 1.00x versus
+1.19x, no longer statistically distinguishable from a normal day at this wider sample) but
+still doesn't close the gap, since even a "normal" jump ratio still exceeds what
+Brenner-Subrahmanyam's 0.8x-of-volatility pricing collects, confirmed by rerunning the full
+straddle and iron condor backtests with GARCH pricing end to end rather than trusting a
+single summary statistic (mean P&L improves from -2.49% to -2.22%, same conclusion either
+way). And the volatility itself doesn't linger, realized volatility in the ten days after an
+event actually reverts slightly below normal (p=4.8e-37), the same "one-time jump, not a
+regime change" story as the price-drift result, just measured a different way.
 
 One more honest note: not every extension here confirmed what I expected going in. The
 bootstrap confidence intervals were supposed to show the same "clustering matters" story as
-the cluster-robust regression, and only did for large-cap. I'd rather report that than quietly
-assume the earlier pattern would hold everywhere.
+the cluster-robust regression, and only did for large-cap. The VIX-regime cut was supposed to
+show short-vol earnings positions getting worse when the broader market is already stressed,
+and instead found the opposite, a real property of vol-scaled metrics rather than the naive
+story. I'd rather report both than quietly assume the expected pattern held.
 
 Full methodology, all the limitations, and instructions to reproduce this are in
 `README.md`.

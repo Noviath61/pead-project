@@ -38,5 +38,25 @@ INSERT INTO ticker_tiers (symbol, tier, sector) VALUES
     ('FFIN', 'small', 'Financials'), ('CASH', 'small', 'Financials'),
     ('ANIP', 'small', 'Healthcare'), ('HSTM', 'small', 'Healthcare'),
     ('SHOO', 'small', 'Consumer'), ('BOOT', 'small', 'Consumer'),
-    ('AAON', 'small', 'Industrials'), ('SXI', 'small', 'Industrials')
+    ('AAON', 'small', 'Industrials'), ('SXI', 'small', 'Industrials'),
+    -- Universe expansion (ingest_expansion.py): roughly doubles the original 60 tickers,
+    -- same 3-tier x 6-sector design, all validated against yfinance before being added here.
+    ('ORCL', 'large', 'Tech'), ('CSCO', 'large', 'Tech'), ('IBM', 'large', 'Tech'), ('INTC', 'large', 'Tech'),
+    ('WFC', 'large', 'Financials'), ('GS', 'large', 'Financials'), ('MS', 'large', 'Financials'), ('C', 'large', 'Financials'),
+    ('PFE', 'large', 'Healthcare'), ('MRK', 'large', 'Healthcare'), ('ABT', 'large', 'Healthcare'), ('LLY', 'large', 'Healthcare'),
+    ('PG', 'large', 'Consumer'), ('KO', 'large', 'Consumer'), ('PEP', 'large', 'Consumer'),
+    ('RTX', 'large', 'Defense'), ('NOC', 'large', 'Defense'), ('GD', 'large', 'Defense'),
+    ('HON', 'large', 'Industrials'), ('MMM', 'large', 'Industrials'), ('CAT', 'large', 'Industrials'),
+    ('FFIV', 'mid', 'Tech'), ('JKHY', 'mid', 'Tech'), ('ZBRA', 'mid', 'Tech'), ('TYL', 'mid', 'Tech'),
+    ('SEIC', 'mid', 'Financials'), ('WBS', 'mid', 'Financials'), ('CBSH', 'mid', 'Financials'), ('UMBF', 'mid', 'Financials'),
+    ('MMSI', 'mid', 'Healthcare'), ('OMCL', 'mid', 'Healthcare'), ('CHE', 'mid', 'Healthcare'), ('ENSG', 'mid', 'Healthcare'),
+    ('CAKE', 'mid', 'Consumer'), ('TXRH', 'mid', 'Consumer'), ('CROX', 'mid', 'Consumer'), ('DECK', 'mid', 'Consumer'),
+    ('CW', 'mid', 'Defense'), ('HEI', 'mid', 'Defense'), ('TDY', 'mid', 'Defense'),
+    ('GGG', 'mid', 'Industrials'), ('NDSN', 'mid', 'Industrials'), ('WSO', 'mid', 'Industrials'),
+    ('PLXS', 'small', 'Tech'), ('DGII', 'small', 'Tech'), ('NVEC', 'small', 'Tech'), ('ROG', 'small', 'Tech'),
+    ('TRMK', 'small', 'Financials'), ('FMBH', 'small', 'Financials'), ('LKFN', 'small', 'Financials'), ('NBTB', 'small', 'Financials'),
+    ('USPH', 'small', 'Healthcare'), ('UFPT', 'small', 'Healthcare'), ('CRVL', 'small', 'Healthcare'), ('ANIK', 'small', 'Healthcare'),
+    ('CAL', 'small', 'Consumer'), ('WEYS', 'small', 'Consumer'), ('LAKE', 'small', 'Consumer'), ('CULP', 'small', 'Consumer'),
+    ('AVAV', 'small', 'Defense'), ('ATRO', 'small', 'Defense'),
+    ('LNN', 'small', 'Industrials'), ('ROCK', 'small', 'Industrials'), ('TRS', 'small', 'Industrials'), ('PATK', 'small', 'Industrials')
 ON CONFLICT (symbol) DO UPDATE SET tier = EXCLUDED.tier, sector = EXCLUDED.sector;

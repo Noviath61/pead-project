@@ -21,18 +21,18 @@ def main() -> None:
     horizon_days = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_HORIZON_DAYS
     today = datetime.date.today()
 
-    print(f"=== Earnings screener: scanning the full 60-ticker universe for reports in the next "
-          f"{horizon_days} days ===")
+    engine = get_engine()
+    tickers = pd.read_sql("SELECT symbol FROM ticker_tiers ORDER BY symbol", engine)["symbol"].tolist()
+
+    print(f"=== Earnings screener: scanning the full {len(tickers)}-ticker universe for reports in "
+          f"the next {horizon_days} days ===")
     print("(live_iv_check.py checks one ticker at a time; this runs the same comparison across")
     print(" every tracked stock and ranks the results, so instead of remembering to check a handful")
     print(" of names by hand, this surfaces whichever upcoming earnings currently look the most")
     print(" mispriced relative to that stock's own history, across the whole universe at once.")
-    print(" Two passes: first a cheap calendar-only check on all 60 tickers to find who reports")
-    print(" soon, then the full options-chain pricing only for that shorter list.)")
+    print(f" Two passes: first a cheap calendar-only check on all {len(tickers)} tickers to find who")
+    print(" reports soon, then the full options-chain pricing only for that shorter list.)")
     print()
-
-    engine = get_engine()
-    tickers = pd.read_sql("SELECT symbol FROM ticker_tiers ORDER BY symbol", engine)["symbol"].tolist()
 
     candidates = []
     for symbol in tickers:

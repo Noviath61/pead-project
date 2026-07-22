@@ -1,5 +1,23 @@
 # Post-Earnings Announcement Drift (PEAD) Analysis
 
+**TL;DR:**
+- Does beating or missing earnings predict how a stock drifts afterward? Tested on 6,044 real
+  earnings events across 125 stocks, 20 years of history, well over a dozen independent
+  statistical methods. **Answer: no**, and the null result got stronger, not weaker, as the
+  sample grew (807 -> 2,953 -> 6,044 events).
+- The more useful finding was about volatility, not direction: earnings days move several
+  times a normal trading day for that stock, consistently enough that a naive
+  historical-volatility-priced options strategy loses money selling into it.
+- A live tool (`live_iv_check.py`) closes the "no real options data" gap with real yfinance
+  options chains, and actually got used for a real trade - which surfaced two genuine bugs
+  no amount of unit testing had caught, then a third when the ticker universe doubled.
+- Full engineering stack: normalized Postgres schema, two APIs feeding it, a reproducible
+  data export so anyone can clone and run this in seconds, CI running 20+ scripts against
+  real data on every push, a `pytest` suite, and a Streamlit dashboard.
+- See [`WALKTHROUGH.md`](WALKTHROUGH.md) for a plain-English tour of every script,
+  [`FINDINGS.md`](FINDINGS.md) for a 1-page results summary, or keep reading for the full
+  methodology and every number behind it.
+
 I love trading stocks and options, and I pay attention to how price moves around earnings.
 That's why I wanted to go in depth on post-earnings announcement drift (PEAD): the idea that
 after a company beats or misses earnings, its stock keeps drifting in that direction for days
@@ -8,13 +26,15 @@ and the research also says it should be strongest in small, under-covered stocks
 in mega-caps everyone already watches. I wanted to actually test that myself on real data
 instead of just taking it on faith.
 
-**Quick summary:** tested on 2,953 earnings events across 60 stocks, using well over a dozen
+**Quick summary:** tested on 6,044 earnings events across 125 stocks, using well over a dozen
 independent statistical methods, from simple bucketing up to a full Fama-French 3-factor model,
 a compounded equity-curve backtest, and a historical-vol-priced options backtest. No significant
 PEAD effect anywhere, and the null result held up (got stronger, actually) as the sample grew
-from 807 to 2,953 events. Separately, the part of this closest to how I actually trade, earnings-day
-volatility, is real and large: earnings days move several times a normal day, consistently
-enough that a naive historical-vol-priced options strategy loses money on it. Along the way I
+from 807 to 2,953 to 6,044 events, first when the original 20-year backtest matured and again
+after widening the universe from 60 to 125 tickers. Separately, the part of this closest to how
+I actually trade, earnings-day volatility, is real and large: earnings days move several times a
+normal day, consistently enough that a naive historical-vol-priced options strategy loses money
+on it. Along the way I
 caught several real bugs and a couple of my own wrong assumptions: my own test suite quietly
 deleting real production data, an unwinsorized regression producing a false positive that a
 placebo check exposed, a Postgres NaN-sorting bug that corrupted raw SQL queries, a naive
@@ -45,11 +65,13 @@ the market model and Fama-French sections below, daily market, size, and value f
 come from Ken French's public data library, the same source used in real academic finance
 research.
 
-The universe is 60 stocks across three market-cap tiers, 20 large/20 mid/20 small, spread
-across Tech, Financials, Healthcare, Consumer, Defense, and Industrials. Price history goes
-back to 2006 (or IPO date) rather than a short recent window, since Alpha Vantage's earnings
-history already went back to 1996 for large-caps, so extending price coverage unlocked
-hundreds of already-available historical events for free.
+The universe is 125 stocks across three market-cap tiers, roughly 41 large / 42 mid / 42 small,
+spread across Tech, Financials, Healthcare, Consumer, Defense, and Industrials. It started at
+60 tickers (20/20/20); `ingest_expansion.py` roughly doubled it later, adding real, validated
+names in the same tier/sector design rather than picking easy ones after the fact. Price
+history goes back to 2006 (or IPO date) rather than a short recent window, since Alpha
+Vantage's earnings history already went back to 1996 for large-caps, so extending price
+coverage unlocked hundreds of already-available historical events for free.
 
 "Day 0" is the reported earnings date if released pre-market, otherwise the next trading day.
 Large-cap uses Alpha Vantage's explicit report-time field for this; mid/small-cap defaults to
@@ -90,32 +112,38 @@ flowchart LR
 
 ## Results
 
-2,953 earnings events across all 60 tickers, up to 20 years of history where available.
+6,044 earnings events across all 125 tickers, up to 20 years of history where available.
 
 ### Quintile buckets
 
 | Surprise bucket | Median surprise | Avg. abnormal drift (10d) | p-value |
 |---|---|---|---|
-| Big miss | -10.7% | +0.18% | 0.538 |
-| Miss | +1.5% | +0.62% | 0.015 |
-| Meet | +6.4% | +0.03% | 0.890 |
-| Beat | +15.0% | +0.12% | 0.675 |
-| Big beat | +46.8% | +0.25% | 0.475 |
+| Big miss | -9.56% | +0.26% | 0.162 |
+| Miss | +1.44% | +0.30% | 0.053 |
+| Meet | +5.59% | +0.10% | 0.494 |
+| Beat | +12.92% | +0.00% | 0.985 |
+| Big beat | +38.93% | +0.49% | 0.026 |
 
 ![No staircase from miss to beat](charts/quintile_drift.png)
 
-If PEAD were real here, this should read like a staircase. It doesn't.
+*Bar height is average abnormal drift (10 trading days) for each surprise-size bucket, big
+miss to big beat. A real PEAD effect would climb left to right; these bars don't.*
+
+If PEAD were real here, this should read like a staircase. It doesn't - and while the "big
+beat" bucket's raw p-value now crosses 0.05 on its own, it doesn't survive multiple-comparison
+correction (corrected p=0.210, see below), the same pattern this project has caught before with
+individual tests that look marginal in isolation.
 
 ### Coverage hypothesis (Spearman correlation, by tier)
 
 | Tier | Window | n events | n tickers | Spearman r | p-value |
 |---|---|---|---|---|---|
-| Large-cap | 10d | 1,237 | 20 | 0.006 | 0.835 |
-| Large-cap | 20d | 1,237 | 20 | 0.018 | 0.518 |
-| Mid-cap | 10d | 835 | 20 | -0.000 | 0.996 |
-| Mid-cap | 20d | 835 | 20 | 0.045 | 0.189 |
-| Small-cap | 10d | 881 | 20 | -0.022 | 0.512 |
-| Small-cap | 20d | 881 | 20 | -0.009 | 0.793 |
+| Large-cap | 10d | 2,257 | 41 | -0.004 | 0.840 |
+| Large-cap | 20d | 2,257 | 41 | 0.019 | 0.363 |
+| Mid-cap | 10d | 1,910 | 42 | -0.016 | 0.476 |
+| Mid-cap | 20d | 1,910 | 42 | 0.015 | 0.507 |
+| Small-cap | 10d | 1,877 | 42 | 0.010 | 0.665 |
+| Small-cap | 20d | 1,877 | 42 | 0.020 | 0.396 |
 
 ### Cluster-robust regression (and a bug I caught mid-analysis)
 
@@ -130,33 +158,35 @@ any tier with too few clusters to trust.
 
 | Tier | Window | n | clusters | Coef | Cluster-robust p | Corrected p |
 |---|---|---|---|---|---|---|
-| Large-cap | 10d | 1,237 | 20 | -0.0023 | 0.603 | 0.603 |
-| Large-cap | 20d | 1,237 | 20 | 0.0103 | 0.076 | 0.151 |
-| Mid-cap | 10d | 835 | 20 | 0.0086 | 0.058 | 0.151 |
-| Mid-cap | 20d | 835 | 20 | 0.0172 | 0.021 | 0.125 |
-| Small-cap | 10d | 881 | 20 | -0.0039 | 0.366 | 0.439 |
-| Small-cap | 20d | 881 | 20 | 0.0055 | 0.320 | 0.439 |
+| Large-cap | 10d | 2,257 | 41 | 0.0014 | 0.822 | 0.822 |
+| Large-cap | 20d | 2,257 | 41 | 0.0119 | 0.033 | 0.100 |
+| Mid-cap | 10d | 1,910 | 42 | 0.0067 | 0.075 | 0.151 |
+| Mid-cap | 20d | 1,910 | 42 | 0.0129 | 0.019 | 0.100 |
+| Small-cap | 10d | 1,877 | 42 | 0.0031 | 0.409 | 0.490 |
+| Small-cap | 20d | 1,877 | 42 | 0.0072 | 0.111 | 0.167 |
 
-Every tier now has a full 20 clusters (large-cap started at 12 since it began as
-Alpha Vantage-only; sourcing the remaining 8 via yfinance fixed this). The one borderline
-number, mid-cap at 20 days, doesn't survive Benjamini-Hochberg correction (0.125).
+Every tier now has 41-42 clusters (large-cap started at just 12 since it originally began as
+Alpha Vantage-only; sourcing the rest via yfinance, then widening the universe further, pushed
+every tier well past the 30-50 rule of thumb). Two numbers land close to the raw 0.05 line,
+large-cap and mid-cap at 20 days, but neither survives Benjamini-Hochberg correction (both
+land at a corrected p of 0.100).
 
 ### Classifier: random split vs. walk-forward
 
-A random 80/20 split scored 50.6% (logistic regression) and 48.1% (random forest) against a
+A random 80/20 split scored 51.1% (logistic regression) and 52.6% (random forest) against a
 50.4% baseline, already basically a coin flip. A random split on time-series data also risks
 lookahead bias: a model partly trained on later events predicting an earlier one, same
 principle as avoiding lookahead bias in a trading backtest. 5-fold walk-forward validation
-(only training on chronologically earlier events) confirms it: 49.0% and 50.2% average
-accuracy against a 51.6% baseline. Both sit at or below baseline in nearly every fold.
+(only training on chronologically earlier events) confirms it: 50.5% and 50.3% average
+accuracy against a 52.1% baseline. Both sit at or below baseline in nearly every fold.
 
 **Does adding the jump_ratio feature help?** The volatility work later in this project
 engineered `jump_ratio` (the size of the Day-0 move relative to a normal day), which turned
 out to be one of the single strongest, most statistically significant numbers anywhere in
-this project (p=1.9x10⁻²³ in `volatility_risk_premium.py`). `model_v2.py` checks the obvious
+this project (p=3.8x10⁻²⁵ in `volatility_risk_premium.py`). `model_v2.py` checks the obvious
 follow-up: does feeding that into the same walk-forward classifier actually help predict
-drift direction? Logistic regression moves by +0.41 percentage points, random forest by
-+0.86, both well under a point, and still below their own baseline. That's not a contradiction:
+drift direction? Logistic regression moves by +0.10 percentage points, random forest by
++0.16, both well under a point, and still below their own baseline. That's not a contradiction:
 `jump_ratio` measures the *size* of the reaction, not which way it goes, and there's no real
 reason a magnitude feature should help predict direction. A feature can be one of the
 strongest, most real findings in the whole project by one measure (realized volatility) and
@@ -165,40 +195,47 @@ still add essentially nothing by a completely different measure (directional acc
 ### Pipeline validity check
 
 Raw drift tested against SPY's return should come back strongly significant, since most
-stocks move with the broad market. It does: r=0.434, p=1.00×10⁻¹³⁵. Good, the null result
+stocks move with the broad market. It does: r=0.459, p=3.62×10⁻³¹³. Good, the null result
 elsewhere isn't because the pipeline is broken.
 
 ### Event study and placebo check
 
 Average daily abnormal return, 10 days before to 20 after Day 0, cumulated. Abnormal return
-spikes right on Day 0 (+0.46% mean, versus roughly -0.12% to +0.18% on every other day in
-the window), and day-to-day volatility more than triples (std 6.94% at Day 0 versus 1.9-2.3%
+spikes right on Day 0 (+0.27% mean, versus roughly -0.02% to +0.16% on every other day in
+the window), and day-to-day volatility more than triples (std 6.21% at Day 0 versus 1.7-2.0%
 everywhere else), then the curve goes flat. The market reprices instantly here, it doesn't
 drift.
 
 ![Cumulative abnormal return around Day 0](charts/event_study_car.png)
 
+*X-axis is trading days relative to the earnings reaction (Day 0); y-axis is the cumulative
+abnormal return. The line jumps at Day 0 and stays flat afterward, instant repricing, not
+gradual drift.*
+
 A raw test of "any positive drift after Day 0" (ignoring surprise direction) does come back
-significant on its own: mean +0.58%, p=0.0003. So I ran a placebo check, the identical test on
+significant on its own: mean +0.55%, p<0.0001. So I ran a placebo check, the identical test on
 random non-earnings days, 100 times with different draws rather than trusting one lucky
-comparison. The real result sits in the lower half of that distribution: placebo mean +0.78%
-(range +0.26% to +1.45%) vs. the real +0.58%. Empirical p-value: 0.860. That "significant"
+comparison. The real result sits in the lower half of that distribution: placebo mean +0.73%
+(range +0.52% to +1.03%) vs. the real +0.55%. Empirical p-value: 0.960. That "significant"
 drift isn't earnings-specific. It's this sample's general upward tendency over the period, and
-random days without any news show it just as much. Without this check I'd have reported +0.58%
+random days without any news show it just as much. Without this check I'd have reported +0.55%
 as evidence for PEAD, and I'd have been wrong.
 
 ![Real result versus the 100-run placebo distribution](charts/placebo_distribution.png)
+
+*Histogram of mean post-Day-0 CAR across 100 random-day placebo runs; the vertical line marks
+the real earnings-day result. It sits inside the distribution, not off to one side of it.*
 
 ### Market model: proper beta-adjusted abnormal returns
 
 Everywhere above, "abnormal drift" assumes every stock moves 1-for-1 with the market. The
 actual academic standard (Brown & Warner 1985) estimates each stock's real beta from a clean
 250-day window before the event, with a 30-day gap so the event can't leak into the estimate.
-Average beta here is 1.13, meaning these are higher-than-market-sensitivity stocks, so the
-simpler method was crediting some of that generic extra sensitivity to "abnormal" earnings
-movement. Beta-adjusted, the post-Day-0 drift almost entirely disappears: mean CAR change
-Day 0 to Day +20 is -0.065% (p=0.701). A cleaner confirmation of what the placebo check
-already found.
+Average beta here is 1.04 (median 1.02), meaning these stocks move roughly in line with the
+market on average now that the universe is broader, so the simpler method was crediting
+whatever extra beta-driven sensitivity existed to "abnormal" earnings movement. Beta-adjusted,
+the post-Day-0 drift stays small and insignificant: mean CAR change Day 0 to Day +20 is
++0.091% (p=0.389). A cleaner confirmation of what the placebo check already found.
 
 ### Fama-French 3-factor model
 
@@ -206,45 +243,48 @@ The market model only controls for beta. The actual next step in the academic li
 (Fama & French 1993) also controls for size (SMB) and value (HML), using free daily factor
 data pulled directly from Ken French's public data library, the same source real asset
 pricing research uses. Same pre-event estimation window and 30-day gap as the market model,
-just three factors instead of one. Result: CAR is +0.462% at Day 0, and actually declines to
-+0.228% by Day +20 rather than climbing. The formal continuation test is not significant
-(mean -0.234%, p=0.139). The most sophisticated model tested here agrees with everything else.
+just three factors instead of one. Result: CAR is +0.337% at Day 0, and actually declines to
++0.271% by Day +20 rather than climbing. The formal continuation test is not significant
+(mean -0.066%, p=0.504). The most sophisticated model tested here agrees with everything else.
 
 ### Multiple comparison correction
 
 Applied separately to the 8 quintile/tier tests and the 6 cluster-robust regressions. Nothing
 survives in either family. The same pattern (one test looks marginal alone, none survive
-correction) reproduced at four different sample sizes as the dataset grew from 807 to 2,953.
+correction) reproduced across every sample size as the dataset grew from 807 to 2,953 to
+6,044 events.
 
 ### Sector cut, and other signals
 
-Same test sliced by sector instead of market-cap tier: one marginal raw result (Industrials,
-p=0.047) that also doesn't survive correction (0.283). Volume spike and volatility change,
-the other two features this pipeline computes, don't predict drift either, in any tier
-(all corrected p-values above 0.58).
+Same test sliced by sector instead of market-cap tier: no sector result is even marginal on
+its own anymore (smallest raw p is Financials at 0.190, all six corrected to 0.870). Volume
+spike and volatility change, the other two features this pipeline computes, don't predict
+drift either, in any tier (all corrected p-values above 0.33).
 
 ### Was this test even powerful enough to find something?
 
 A null result only means something if the test could have detected a real effect had one
-existed. Using a standard Fisher z-transform power calculation, the tier-level tests (n=835
-to 1,237) could reliably detect a Spearman correlation as small as 0.08-0.10 at 80% power,
-which is Cohen's conventional threshold for a "small" effect. Every observed correlation is
-well below that. Two sector splits with only 4-6 tickers (Defense, Industrials) genuinely are
-underpowered for an effect that small, worth naming honestly, but their observed correlations
-are still smaller than even their own higher detection threshold. This wasn't an underpowered
-test missing something real; it just didn't find anything.
+existed. Using a standard Fisher z-transform power calculation, the tier-level tests (n=1,877
+to 2,257, up from n=835-1,237 before widening the universe) could reliably detect a Spearman
+correlation as small as 0.059-0.065 at 80% power, comfortably under 0.1, Cohen's conventional
+threshold for a "small" effect. Every observed correlation is well below even that tighter
+bar. The two thinnest sector splits, Defense (12 tickers) and Industrials (16), sit right at
+the edge (detection thresholds of 0.116 and 0.102, just over the "small effect" line) rather
+than clearly underpowered the way they were at 4-6 tickers each before the universe widened,
+and their observed correlations are still smaller than even their own detection threshold.
+This wasn't an underpowered test missing something real; it just didn't find anything.
 
 ### Does it even make economic sense to trade?
 
 Statistical significance and economic significance are different questions. The most obvious
 naive PEAD trade, long the "big beat" quintile and short "big miss," nets a gross spread of
-only +0.06% before any trading costs at all, and about -0.34% after a conservative 20bps
-round-trip cost assumption per leg. Not tradeable by any standard, on top of never being
-statistically significant to begin with.
++0.23% before any trading costs at all, and about -0.17% after a conservative 20bps round-trip
+cost assumption per leg. Not tradeable by any standard, on top of never being statistically
+significant to begin with.
 
 ### A real equity curve, not a pooled average
 
-The naive strategy above is a single pooled number across all 1,182 qualifying trades, which
+The naive strategy above is a single pooled number across all 2,412 qualifying trades, which
 hides what actually matters if you traded this through time: does it blow up, and by how much,
 along the way? `backtest_equity_curve.py` sequences every trade by its actual Day-0 date and
 builds a proper compounded equity curve instead of a spreadsheet-style average.
@@ -262,15 +302,18 @@ gives a number that actually means something:
 
 | Metric | Value |
 |---|---|
-| Trades | 1,182 (591 long, 591 short) |
-| Span | 19.7 years, ~60 trades/year |
-| Mean return per trade (net of cost) | -0.37% |
-| Annualized Sharpe ratio | -0.36 |
-| Max drawdown | -41.1% |
-| Win rate | 47.5% |
-| Total compounded return | -37.6% |
+| Trades | 2,412 (1,203 long, 1,209 short) |
+| Span | 19.8 years, ~122 trades/year |
+| Mean return per trade (net of cost) | -0.29% |
+| Annualized Sharpe ratio | -0.44 |
+| Max drawdown | -58.1% |
+| Win rate | 46.5% |
+| Total compounded return | -52.7% |
 
 ![Long-short equity curve](charts/equity_curve.png)
+
+*Wealth index over time (starting value = 1.0) for the naive long-beat/short-miss strategy,
+compounded trade by trade at 10% position sizing. Trends down, not up.*
 
 A tradeable long-short strategy generally wants a Sharpe ratio comfortably above 1.0. This
 one's negative, which lines up with everything else in this project: no statistical edge,
@@ -286,20 +329,23 @@ it compares the size of the Day-0 move to that stock's own trailing 20-day norma
 
 This project has no options-chain data, so it can't measure implied volatility directly.
 What it can measure, from price data already sitting in the database, is the realized side:
-the earnings-day move was on average 2.37x a normal day for that same stock (1.27x at the
+the earnings-day move was on average 2.28x a normal day for that same stock (1.19x at the
 geometric mean, which is the fairer summary given how right-skewed the ratio is), and beat a
-normal day outright 61.6% of the time. A one-sided test on the log ratio confirms this isn't
-noise (t=9.99, p=1.9x10⁻²³). Broken out by tier, the jump is largest in small-caps (2.62x
-mean) and smallest in large-caps (2.21x), the same coverage pattern that shows up everywhere
-else in this project, just measured through a completely different lens.
+normal day outright 59.7% of the time. A one-sided test on the log ratio confirms this isn't
+noise (t=10.34, p=3.78x10⁻²⁵). Broken out by tier, the jump is largest in mid/small-caps
+(2.47x mean each) and smallest in large-caps (1.95x), the same coverage pattern that shows up
+everywhere else in this project, just measured through a completely different lens.
 
 | Tier | n events | Mean jump ratio | Median jump ratio |
 |---|---|---|---|
-| Large-cap | 1,243 | 2.21x | 1.45x |
-| Mid-cap | 835 | 2.34x | 1.45x |
-| Small-cap | 886 | 2.62x | 1.55x |
+| Large-cap | 2,269 | 1.95x | 1.15x |
+| Mid-cap | 1,911 | 2.47x | 1.51x |
+| Small-cap | 1,889 | 2.47x | 1.43x |
 
 ![Earnings-day volatility jump](charts/volatility_risk_premium.png)
+
+*Left: distribution of the jump ratio (earnings-day move / normal-day move) across all
+events; the dashed line marks 1.0x, a normal day. Right: the same ratio split by tier.*
 
 Sector is a dimension the tier cut can't see, since every tier mixes all six sectors
 together. Cutting the same jump ratio by sector instead turns up something tier alone
@@ -307,16 +353,21 @@ hides:
 
 | Sector | n events | Mean jump ratio |
 |---|---|---|
-| Tech | 946 | 3.22x |
-| Healthcare | 390 | 2.42x |
-| Consumer | 622 | 2.17x |
-| Industrials | 258 | 1.87x |
-| Financials | 552 | 1.85x |
-| Defense | 196 | 0.96x |
+| Tech | 1,528 | 3.35x |
+| Healthcare | 950 | 2.38x |
+| Consumer | 1,128 | 2.18x |
+| Defense | 584 | 1.68x |
+| Industrials | 747 | 1.65x |
+| Financials | 1,132 | 1.55x |
 
-Tech runs the hottest by a wide margin, more than double most other sectors. Defense is the
-one sector where the Day-0 move doesn't even reliably beat a normal trading day. That's a
-real, sector-specific pattern, not tier or coverage effects wearing a different hat.
+Tech runs the hottest by a wide margin, more than double most other sectors. Widening the
+universe changed the bottom of this ranking: Defense used to be the one sector where the
+Day-0 move barely beat a normal trading day (0.96x, on the original 4 Defense names), and
+Financials is now the calmest sector instead (1.55x), with Defense actually the third-hottest
+after the new Defense tickers (RTX, NOC, GD, and others) came in with more typical reactions
+than the original small sample. Worth naming honestly: a 4-6 ticker sector can flip its
+ranking entirely once the sample gets more representative, which is itself a real argument
+for why the tier/sector splits with the fewest names deserve the least confidence.
 
 This is exactly why options carry elevated implied volatility going into an earnings date,
 the market is pricing in that a normal day's volatility badly understates what's coming. It
@@ -333,36 +384,42 @@ The jump ratio above says the earnings-day move is real and large. `straddle_bac
 takes the obvious next step: price an at-the-money straddle using only trailing historical
 volatility, no options-chain data, using the Brenner & Subrahmanyam (1988) approximation
 (straddle price is about 0.8 x price x daily volatility for a one-day option), sell it into
-every one of these 2,964 events, and see what happens.
+every one of these 6,069 events, and see what happens.
 
-It loses money, clearly and consistently: mean P&L of -2.92% of the stock's price per trade
-(p=2.8x10⁻¹⁸⁰), a win rate of only 31.4%, and losses in every tier (large -2.44%, mid -3.39%,
-small -3.14%). Implied vol would need to run at roughly 2.6x the trailing historical level
+It loses money, clearly and consistently: mean P&L of -2.49% of the stock's price per trade
+(p<0.0001), a win rate of only 33.5%, and losses in every tier (large -1.79%, mid -2.86%,
+small -2.96%). Implied vol would need to run at roughly 2.5x the trailing historical level
 just for this to break even on average.
 
 ![Historical-vol-priced straddle P&L](charts/straddle_backtest.png)
 
-By sector, the same pattern from the jump ratio shows up on the P&L side:
+*Left: distribution of per-event P&L (% of stock price) from selling a historical-vol-priced
+straddle into every event; mass sits well left of zero. Right: mean P&L by tier.*
+
+By sector, a similar but not identical pattern from the jump ratio shows up on the P&L side:
 
 | Sector | n events | Mean P&L | Win rate |
 |---|---|---|---|
-| Tech | 946 | -4.80% | 21.0% |
-| Healthcare | 390 | -2.90% | 34.9% |
-| Consumer | 622 | -2.48% | 37.3% |
-| Industrials | 258 | -1.75% | 36.4% |
-| Financials | 552 | -1.74% | 31.0% |
-| Defense | 196 | -0.13% | 51.0% |
+| Tech | 1,528 | -4.47% | 20.7% |
+| Consumer | 1,128 | -2.54% | 34.8% |
+| Healthcare | 950 | -2.52% | 34.7% |
+| Defense | 584 | -1.51% | 41.1% |
+| Industrials | 747 | -1.16% | 41.1% |
+| Financials | 1,132 | -1.14% | 39.7% |
 
 Tech is the worst sector to sell this trade into by a wide margin, the same sector with the
-biggest jump ratio above. Defense comes out close to a coin flip, roughly breakeven on both
-P&L and win rate, the same sector where the jump ratio barely cleared a normal trading day.
-Same underlying pattern, seen from the volatility side and the P&L side.
+biggest jump ratio above. Financials now comes closest to breakeven on P&L (-1.14%), while
+Defense and Industrials tie for the best win rate (41.1%) - a reordering from the original
+60-ticker run, where Defense alone looked like the closest thing to a coin flip. Same
+underlying reshuffle as the jump-ratio table above: a thin sector sample moved once real
+tickers were added, not a sign the original numbers were wrong, just less stable with only a
+handful of names behind them.
 
 That's not a real counterexample to selling options for a living, and I want to be clear
 about why. This price is deliberately the cheapest reasonable price for the straddle, since
 it ignores everything the market actually knows going into an earnings date: real implied
 volatility runs well above historical volatility precisely because the market is pricing in
-the jump this project measured directly above. A 2.6x multiplier is actually within the range
+the jump this project measured directly above. A 2.5x multiplier is actually within the range
 real earnings implied-vol run-ups reach in practice. What this shows honestly is a lower
 bound: if you can't get implied vol priced at least a few multiples over historical, you're
 picking up a genuinely bad number, and this project has no options-chain data to say whether
@@ -380,16 +437,19 @@ overstates the condor's real edge somewhat, since real wings cost part of the cr
 
 | | Mean P&L | Worst single event |
 |---|---|---|
-| Naked straddle (uncapped) | -2.92% | -50.1% |
-| Iron condor (3x credit cap) | -1.72% | -17.6% |
+| Naked straddle (uncapped) | -2.49% | -50.1% |
+| Iron condor (3x credit cap) | -1.45% | -17.6% |
 
 Capping the loss doesn't just trim the tail, it noticeably improves the average too, because
 the naked version's left tail is fat enough that a handful of catastrophic single events were
-dragging the average down harder than the typical trade. The cap actually bound on 24.5% of
+dragging the average down harder than the typical trade. The cap actually bound on 23.0% of
 events, and the pattern holds across a range of wing widths (2x to 6x credit, see the script
 output for the full sensitivity table).
 
 ![Naked straddle vs. iron condor P&L](charts/iron_condor_backtest.png)
+
+*Overlapping P&L distributions for the uncapped (naked) and capped (iron condor) versions of
+the same trade. Capping trims the fat left tail without shifting the average sign.*
 
 The average outcome is still negative either way on this historical-vol-priced basis, so this
 isn't a case for trading earnings condors as a reliable edge. It is a concrete illustration of
@@ -409,50 +469,65 @@ sophisticated model changes the jump-ratio and straddle-pricing conclusions.
 
 One honest caveat up front: the market model and Fama-French sections in this project fit
 only on a clean pre-event window specifically to avoid lookahead bias. Refitting a fresh
-GARCH model before each of ~2,950 individual events would be its own project. This fits one
-GARCH model per ticker on its full available history instead (60 tickers, each fit in well
+GARCH model before each of ~6,000 individual events would be its own project. This fits one
+GARCH model per ticker on its full available history instead (125 tickers, each fit in well
 under a second), so the fitted parameters carry mild lookahead bias, even though each daily
 forecast itself only uses information through the prior day. Good enough to ask "does a
 smarter model change the conclusion," not a substitute for the point-in-time discipline used
 in the market-model and Fama-French sections.
 
-The two volatility estimates agree in shape (Spearman r=0.893) but aren't the same number.
+The two volatility estimates agree in shape (Spearman r=0.896) but aren't the same number.
 GARCH comes out measurably closer to the actual realized move: geometric mean jump ratio
-drops from 1.27x (rolling window) to 1.06x (GARCH), and the breakeven implied-vol multiplier
-for the straddle backtest drops from 2.65x to 2.23x. Both are still statistically real
-(GARCH: t=2.41, p=0.008), just smaller.
+drops from 1.19x (rolling window) to 1.00x (GARCH), and the breakeven implied-vol multiplier
+for the straddle backtest drops from 2.54x to 2.18x. The rolling-window ratio is still
+statistically real (t=10.34, p=3.8x10⁻²⁵), but at this wider sample, the GARCH-based ratio is
+no longer distinguishable from 1.0 (t=0.17, p=0.43) - a genuinely different result from the
+original 60-ticker check, not just a smaller version of the same one.
 
 ![GARCH vs. rolling volatility](charts/garch_volatility_forecast.png)
 
-A genuinely better model gets closer, but doesn't close the gap. That makes sense: neither
-model has any way to know an earnings date is coming, since both are purely backward-looking
-time-series models. That remaining gap is exactly the volatility risk premium options markets
-price in ahead of an earnings date, information a time-series model structurally can't have
-no matter how sophisticated it gets.
+*Left: rolling-window vs. GARCH(1,1) daily volatility estimates, one dot per event, dashed
+line is y=x. Right: geometric-mean jump ratio under each method.*
+
+That doesn't mean GARCH-priced straddles stop losing money, though, and the reconciliation is
+worth spelling out rather than glossing over: Brenner-Subrahmanyam prices the straddle at
+*0.8x* daily volatility, not 1.0x. Even a jump ratio that averages almost exactly 1.0 (a
+"normal" day, by the GARCH model's own reckoning) still means the realized move typically
+exceeds the 0.8x-scaled premium collected, so the trade keeps losing on average even though
+the narrower "is the jump ratio above 1" claim no longer holds up on its own at this sample
+size. A genuinely better volatility model gets closer to realistic, but doesn't close the
+gap, and this is exactly why: neither model has any way to know an earnings date is coming,
+since both are purely backward-looking time-series models. That remaining gap is exactly the
+volatility risk premium options markets price in ahead of an earnings date, information a
+time-series model structurally can't have no matter how sophisticated it gets.
 
 `garch_volatility_forecast.py` only reported that gap as a single summary statistic, though
 (the breakeven multiplier), never rebuilt the actual straddle and iron condor backtests with
-GARCH pricing end to end. `garch_straddle_backtest.py` closes that: same 2,964 events, same
+GARCH pricing end to end. `garch_straddle_backtest.py` closes that: same 6,069 events, same
 Brenner-Subrahmanyam formula, same 3x-credit iron condor cap, priced off GARCH volatility
 instead of the rolling window, so the comparison is apples to apples rather than two
 different scripts on two different samples.
 
 | | Rolling 20-day | GARCH(1,1) |
 |---|---|---|
-| Mean P&L, naked straddle | -2.92% | -2.58% |
-| Win rate | 31.4% | 36.1% |
-| Breakeven IV multiplier | 2.64x | 2.22x |
-| Mean P&L, 3x-credit iron condor | -1.72% | -1.70% |
+| Mean P&L, naked straddle | -2.49% | -2.22% |
+| Win rate | 33.5% | 37.9% |
+| Breakeven IV multiplier | 2.53x | 2.17x |
+| Mean P&L, 3x-credit iron condor | -1.45% | -1.44% |
 | Worst single event, iron condor | -17.6% | -18.9% |
 
 Per-event P&L from the two pricing methods correlates at 0.98, and the tier pattern holds in
-both (small-cap worst, large-cap least bad). GARCH pricing is measurably less bad across every
-metric, exactly consistent with the single-ticker check finding it a better volatility
+both (small/mid-cap worst, large-cap least bad). GARCH pricing is measurably less bad across
+every metric, and both are still overwhelmingly significant on the P&L test itself (GARCH:
+p=1.2x10⁻²⁷⁰), exactly consistent with the single-ticker check finding it a better volatility
 estimate, not a coincidence specific to whichever tickers that earlier check happened to use.
 It still doesn't flip the conclusion: selling this trade priced off either method loses money
 on average, historically, whether capped or naked.
 
 ![Straddle P&L: rolling vs. GARCH pricing, same events](charts/garch_straddle_backtest.png)
+
+*Overlapping P&L distributions for the same events, priced with rolling-window volatility
+versus GARCH(1,1). GARCH shifts the distribution right (less bad) without changing its sign.*
 
 ### Does the earnings-day volatility spike actually linger afterward?
 
@@ -463,14 +538,19 @@ snap back to normal almost immediately? The `earnings_drift` view already comput
 over the 20-day realized volatility before it), it just hadn't been the headline of any
 script until `volatility_crush_check.py`.
 
-The geometric mean ratio is 0.94, and the median is 0.95, both below 1, and a one-sided test
-on the log ratio confirms it (t=-7.58, p=2.3x10⁻¹⁴). If anything, realized volatility in the
+The geometric mean ratio is 0.93, and the median is 0.93, both below 1, and a one-sided test
+on the log ratio confirms it (t=-12.75, p=4.8x10⁻³⁷). If anything, realized volatility in the
 ten days after an earnings event is slightly *below* the stock's own normal level, not
-elevated. It doesn't depend on the size of the surprise either (Spearman r=0.015 against
-`|surprise %|`, not distinguishable from zero); the reversion looks like a fairly universal
-pattern rather than something proportional to how big the news was.
+elevated (the arithmetic mean, 1.03, sits just above 1, but that's the right skew a handful of
+large spikes creates, exactly why the geometric mean is the fairer summary here too). It
+doesn't depend on the size of the surprise either (Spearman r=0.016 against `|surprise %|`,
+p=0.205, not distinguishable from zero); the reversion looks like a fairly universal pattern
+rather than something proportional to how big the news was.
 
 ![Post-earnings volatility mostly reverts](charts/volatility_crush.png)
+
+*Left: distribution of the volatility-change ratio (10 days after Day 0 / 20 days before);
+the dashed line at 1.0 marks no change. Right: the same ratio split by tier.*
 
 Combined with the event study (drift is flat after Day 0) and the volatility jump analysis
 (the reaction concentrates almost entirely on Day 0 itself), this is the same "one-time jump,
@@ -493,9 +573,9 @@ regression. That's only half true:
 
 | Tier | Observed r | Naive 95% CI width | Cluster 95% CI width | Cluster / naive |
 |---|---|---|---|---|
-| Large-cap | 0.006 | 0.123 | 0.126 | 1.02x |
-| Mid-cap | -0.000 | 0.146 | 0.125 | 0.86x |
-| Small-cap | -0.022 | 0.138 | 0.098 | 0.71x |
+| Large-cap | -0.004 | 0.090 | 0.092 | 1.02x |
+| Mid-cap | -0.016 | 0.096 | 0.093 | 0.97x |
+| Small-cap | 0.010 | 0.097 | 0.080 | 0.82x |
 
 Large-cap comes out about the same, and mid/small-cap actually come out *narrower* under
 cluster resampling. That reproduces with a different random seed and resample count, so it's
@@ -515,16 +595,16 @@ for a real trade" below) exposed a blind spot in every backtest above: `straddle
 and `iron_condor_backtest.py` both price and resolve every trade over a single day, but a real
 option's holding period (from before the report to actual expiration) isn't always 1 trading
 day, and the extra days add real, independent variance, not just noise around the first day's
-number. `holding_period_sensitivity.py` applies that same lesson to the full 20-year, 60-ticker
+number. `holding_period_sensitivity.py` applies that same lesson to the full 20-year, 125-ticker
 dataset instead of one ticker on one night: reprice both backtests at 1, 2, 3, and 5 trading
 days of assumed holding period and see whether the conclusion holds up.
 
 | N (trading days) | Events | Mean P&L, naked | Win rate | Breakeven IV multiple | Mean P&L, condor | Worst event, condor |
 |---|---|---|---|---|---|---|
-| 1 | 2,964 | -3.07% | 29.6% | 2.86x | -1.82% | -17.6% |
-| 2 | 2,963 | -2.89% | 35.1% | 2.24x | -1.93% | -23.3% |
-| 3 | 2,960 | -2.80% | 36.5% | 1.98x | -2.03% | -28.5% |
-| 5 | 2,957 | -2.56% | 39.6% | 1.69x | -2.01% | -36.8% |
+| 1 | 6,068 | -2.64% | 30.9% | 2.77x | -1.55% | -17.6% |
+| 2 | 6,065 | -2.52% | 35.4% | 2.20x | -1.70% | -23.3% |
+| 3 | 6,061 | -2.41% | 37.4% | 1.93x | -1.75% | -28.5% |
+| 5 | 6,055 | -2.16% | 41.5% | 1.65x | -1.70% | -36.8% |
 
 Going in, I expected longer holding periods to make things worse, the way it did for GOOGL
 specifically that night. Historically, across the whole dataset, it's the opposite for the
@@ -532,7 +612,7 @@ naked position: mean P&L improves (less negative) and the breakeven IV multiple 
 as N grows. The explanation ties directly back to the volatility-crush finding above:
 Brenner-Subrahmanyam's sqrt(T) scaling assumes the same daily volatility holds for every day in
 the holding period, but realized volatility after an event reverts toward normal (geometric
-mean ratio 0.94), not staying elevated. Pricing a longer straddle as if every day were as
+mean ratio 0.93), not staying elevated. Pricing a longer straddle as if every day were as
 volatile as the event day itself means systematically over-collecting premium for the calmer
 days that follow, which works in the seller's favor here, on average, historically.
 
@@ -547,19 +627,65 @@ live bug, showing up again in a different, structural way here.
 
 ![Holding period sensitivity](charts/holding_period_sensitivity.png)
 
+*Left: mean P&L (naked vs. iron condor) as assumed holding period grows from 1 to 5 trading
+days. Right: the iron condor's worst single event over the same range.*
+
 (Simplification, disclosed: this anchors on the raw report date for every ticker, N trading
 days later, rather than each ticker's own pre/post-market-adjusted reaction date. For
 post-market reporters, which is most of this universe, N=1 lines up with the existing day0-only
 scripts; for pre-market reporters it's one day later than day0. Fine for a sensitivity check
 across holding periods, not a byte-for-byte reproduction of those scripts' N=1 case.)
 
+### Does any of this depend on the broader market's mood?
+
+Every test above pools 20 years together, calm markets and stressed ones alike. `vix_regime_analysis.py`
+pulls in something this project hadn't used before, the VIX index itself (free via yfinance,
+decades of history), and conditions the two headline questions - does surprise size predict
+drift, and does selling premium into earnings pay off - on the market-wide volatility regime
+at the time, using standard textbook VIX bands rather than sample-dependent terciles.
+
+| VIX regime | n events | Spearman r (surprise vs. drift) | p-value |
+|---|---|---|---|
+| Low (<15, calm) | 2,217 | 0.014 | 0.524 |
+| Medium (15-25, normal) | 3,018 | -0.020 | 0.268 |
+| High (>25, stressed) | 809 | -0.009 | 0.788 |
+
+The PEAD null holds in every regime individually, not just on average across them (pooled
+r=-0.004, p=0.737, the same order of magnitude as each slice above): there's no calm-market or
+stressed-market subset where surprise size starts predicting drift.
+
+| VIX regime | Geo-mean jump ratio | Mean straddle P&L | Win rate |
+|---|---|---|---|
+| Low (<15, calm) | 1.24x | -2.43% | 32.5% |
+| Medium (15-25, normal) | 1.21x | -2.63% | 33.9% |
+| High (>25, stressed) | 1.00x | -2.14% | 35.1% |
+
+![PEAD null and straddle P&L by VIX regime](charts/vix_regime.png)
+
+*Left: Spearman correlation (surprise vs. drift) by VIX regime, all near zero. Right: mean
+straddle P&L by the same regimes, not worse in the high-VIX bucket.*
+
+Going in, I expected the opposite of what this shows: a short-vol earnings position at its
+worst exactly when the broader market is already stressed, a double whammy rather than a
+diversifying bet. Instead the jump ratio is smallest and straddle P&L is least bad in the
+high-VIX bucket. The reconciliation: both the jump ratio's denominator and the straddle's
+Brenner-Subrahmanyam price are keyed off the same trailing 20-day volatility for that specific
+stock, and single-stock realized vol is itself elevated in high-VIX regimes, not just the
+index. The "normal day" baseline these percentage-based metrics compare against is already
+inflated exactly when VIX is high, which mechanically shrinks the relative jump ratio and
+richens the credit collected, even though the absolute earnings-day move isn't obviously
+smaller in dollar terms. A real property of vol-scaled metrics, not evidence that a stressed
+market makes earnings positions safer in absolute terms, a question this project's
+percentage-based framework isn't built to answer on its own.
+
 ## Interpretation
 
 No significant relationship between surprise size and abnormal drift, in any tier, across
 every independent method tried here. The coverage hypothesis didn't hold up either: every
-tier stayed indistinguishable from zero, and quadrupling the sample size converged estimates
-closer to zero, not further. That's the signature of a genuinely absent effect, not an
-underpowered test.
+tier stayed indistinguishable from zero, and more than doubling the sample size (twice: once
+as the original backtest matured, again after widening the ticker universe) converged
+estimates closer to zero, not further. That's the signature of a genuinely absent effect, not
+an underpowered test.
 
 The placebo check is the strongest single piece of evidence here. It shows a result that looks
 statistically significant on its own can be fully explained by general sample drift that has
@@ -578,9 +704,10 @@ following two weeks, and a historical-vol-priced options trade sold into it lose
 consistently enough to be statistically undeniable. None of that is a trading strategy on its
 own, the backtested analysis above has no options-chain data to say whether real implied
 volatility is priced richly enough to sell profitably, but it is a real, quantified,
-sector-varying pattern (Tech runs hottest, Defense barely moves) that a purely directional
-PEAD test would never have surfaced. `live_iv_check.py`, below, actually closes that gap with
-real (if simplified) options data instead of leaving it as a permanent disclaimer.
+sector-varying pattern (Tech runs hottest, Financials calmest) that a purely directional
+PEAD test would never have surfaced, and it holds up whether the broader market is calm or
+stressed. `live_iv_check.py`, below, actually closes that gap with real (if simplified)
+options data instead of leaving it as a permanent disclaimer.
 
 ## Live check: is the market pricing this correctly right now?
 
@@ -609,13 +736,13 @@ current-vol estimate would quietly compare apples to oranges. Swapping in GARCH 
 doesn't create that inconsistency is a small thing, but skipping it would mean not actually
 using the project's own best-known method somewhere it clearly applies.
 
-Run on 2026-07-21, the day before GOOGL's earnings and a week before HOOD's:
+Run on 2026-07-22, the morning of GOOGL's earnings and a week before HOOD's:
 
 | Ticker | Earnings date | Nearest expiration | Historical typical move | Market-implied move | Richness |
 |---|---|---|---|---|---|
-| GOOGL | 2026-07-22 | 2026-07-24 (3 trading days out) | 7.08% | 5.27% | 0.74x cheaper |
-| HOOD | 2026-07-29 | 2026-07-31 (8 trading days out) | 11.08% | 4.84% | 0.44x cheaper |
-| NVDA | 2026-08-26 | 2026-08-28 (28 trading days out) | - | - | skipped, too far out |
+| GOOGL | 2026-07-22 | 2026-07-24 (2 trading days out) | 7.08% | 5.46% | 0.77x cheaper |
+| HOOD | 2026-07-29 | 2026-07-31 (7 trading days out) | 11.08% | 5.69% | 0.51x cheaper |
+| NVDA | 2026-08-26 | 2026-08-28 (27 trading days out) | - | - | skipped, too far out |
 
 NVDA is the honest part of this: its earnings are over a month away, and no closer weekly
 option exists yet, so netting out a month of assumed-constant daily volatility is far too
@@ -666,42 +793,56 @@ found this, not the test suite.
 ### Scaling it up: a screener across the whole universe
 
 `live_iv_check.py` checks one ticker at a time. `earnings_screener.py` runs the same
-comparison across all 60 tracked tickers and ranks the results, so instead of remembering to
+comparison across all 125 tracked tickers and ranks the results, so instead of remembering to
 check a handful of names by hand, it surfaces whichever upcoming earnings currently look the
 most mispriced relative to that stock's own history, across the whole universe at once. It
-runs in two passes: a cheap calendar-only check on all 60 tickers to find who reports soon,
+runs in two passes: a cheap calendar-only check on all 125 tickers to find who reports soon,
 then the full options-chain pricing only for that shorter list.
 
-Run the same day, scanning for earnings in the next 30 days, 36 of 60 tickers qualified, and
-9 produced a usable comparison after skipping names with no historical baseline, no options
-data, or an unreliable netting assumption:
+Run the morning of GOOGL's earnings, scanning for earnings in the next 30 days, 67 of 125
+tickers qualified, and 14 produced a usable comparison after skipping names with no historical
+baseline, no options data, or an unreliable netting assumption:
 
 | Ticker | Richness ratio |
 |---|---|
-| BA | 4.65x richer |
-| LMT | 3.56x richer |
-| MSFT | 1.66x richer |
-| GOOGL | 1.44x richer |
-| TDOC | 1.29x richer |
+| RTX | 3.98x richer |
+| LMT | 3.06x richer |
+| BA | 1.90x richer |
+| TDOC | 1.67x richer |
+| GD | 1.52x richer |
+| DECK | 1.42x richer |
+| MSFT | 1.40x richer |
 | AMZN | 1.10x richer |
-| META | 0.58x cheaper |
-| HOOD | 0.51x cheaper |
-| TSLA | 0.46x cheaper |
+| INTC | 0.79x cheaper |
+| GOOGL | 0.77x cheaper |
+| META | 0.62x cheaper |
+| TSLA | 0.61x cheaper |
+| HOOD | 0.48x cheaper |
+| IBM | 0.15x cheaper |
 
-BA stands out: its own historical geometric-mean jump ratio is just 0.48x (49 events, a
-genuinely calm historical earnings reactor), but the market is currently pricing in an
-earnings-specific move of about 4x its historically-typical reaction at current volatility.
-Plausible given Boeing's well-documented recent operational troubles, and exactly the kind of
-thing a screener across the whole universe catches that checking three names by hand wouldn't.
+RTX stands out this time (3.98x, reporting the day after this was run), and IBM is priced the
+cheapest relative to its own history by a wide margin (0.15x). Two of the original three
+Defense names from before the universe was widened, LMT and BA, are still near the top of the
+"richer" side, joined now by RTX and GD, new Defense tickers added in the expansion, showing
+up here independently rather than needing to be hand-picked.
 
-Building the screener surfaced a second real bug, more general than the first: even within
-the 10-trading-day "reliable" horizon, if a stock's own recent realized volatility happens to
-be running hot relative to what its near-term options currently price, the same variance
-subtraction can still clip to zero. AAPL hit this live during development (8 trading days
-out, comfortably inside the horizon, still clipped) - being close to the event doesn't
-guarantee the netting assumption holds. Fixed by checking for this directly (`would_clip_to_zero`
-in `backtest_math.py`, with its own unit tests including this exact case) rather than trusting
-proximity to the event as a sufficient safety check.
+Building the screener (originally against the 60-ticker universe) surfaced a second real bug,
+more general than the first: even within the 10-trading-day "reliable" horizon, if a stock's
+own recent realized volatility happens to be running hot relative to what its near-term
+options currently price, the same variance subtraction can still clip to zero. AAPL hit this
+live during development (8 trading days out, comfortably inside the horizon, still clipped) -
+being close to the event doesn't guarantee the netting assumption holds. Fixed by checking for
+this directly (`would_clip_to_zero` in `backtest_math.py`, with its own unit tests including
+this exact case) rather than trusting proximity to the event as a sufficient safety check.
+
+Widening the universe to 125 tickers surfaced a third: four of the new, thinner names (FMBH,
+LKFN, MMSI, SCHL) crashed with a raw `IndexError` instead of a clean skip message. Their
+nearest listed expiration had zero call or put contracts at all, something none of the
+original 60 tickers happened to trigger, so indexing into "the closest strike" assumed at
+least one contract would always exist. Fixed the same way as the other two edge cases in this
+section: extracted the check into its own tested function (`chain_has_no_contracts` in
+`backtest_math.py`) instead of trusting that a screener run against a bigger, more varied
+universe wouldn't eventually hit a case the original three-ticker default never could.
 
 This is descriptive context from this project's own historical data, not a trading signal or
 a recommendation, and neither script is reproducible the way every other result in this
@@ -742,7 +883,7 @@ directory existing or being complete.
 - Mid/small-cap Day-0 timing defaults to "post-market" rather than a confirmed report time
 - A handful of originally-targeted small-cap tickers got dropped for lack of historical data
   density, itself a small sign that lower-coverage stocks have thinner historical records
-- The market-model and Fama-French estimates both need a clean ~280-day window; 96 of 2,953
+- The market-model and Fama-French estimates both need a clean ~280-day window; 98 of 6,044
   events don't have one and are excluded from just those two analyses, though included
   everywhere else. Ken French's factor data also currently ends in May 2026, about two months
   before this project's price data, so the most recent events lose Fama-French coverage first
@@ -796,7 +937,7 @@ that caught a real bug, see below), lineage tracking, a SQL view built on window
 instead of pulling everything into Python, a standalone SQL showcase (`queries.sql`)
 answering real business questions directly with CTEs, ranking functions, and native
 aggregates, not just through the pandas layer, and a committed, compressed export of the full
-275K-row dataset (`export_full_dataset.py` / `load_full_dataset.py`) so cloning this repo gets
+643K-row dataset (`export_full_dataset.py` / `load_full_dataset.py`) so cloning this repo gets
 anyone to a fully working database in seconds instead of needing their own API keys and days
 of rate-limited re-ingestion, verified by loading it into a disposable Postgres container and
 confirming every downstream number matched exactly.
@@ -819,19 +960,21 @@ an at-the-money straddle price, a defined-risk (iron condor) variant of that bac
 how capping the loss changes both the average outcome and the tail, a GARCH(1,1)
 volatility-forecasting model checked against the simpler rolling-window estimate and then
 carried all the way through to a full apples-to-apples repricing of both backtests on the
-same 2,964 events rather than left as a single summary statistic, a volatility-persistence
+same 6,069 events rather than left as a single summary statistic, a volatility-persistence
 check on whether the Day-0 spike lingers or reverts, bootstrap confidence intervals
-comparing naive to cluster-level resampling on the headline
-correlations, and a feature-engineering follow-up feeding the volatility work's strongest
-standalone signal back into the walk-forward classifier to check whether it actually helps
-predict direction (it doesn't, honestly reported either way).
+comparing naive to cluster-level resampling on the headline correlations, a market-regime cut
+using VIX (pulled in as a new conditioning variable, not just another slice of the same
+ticker data) to check whether either the null result or the volatility-selling picture depends
+on the broader market being calm or stressed, and a feature-engineering follow-up feeding the
+volatility work's strongest standalone signal back into the walk-forward classifier to check
+whether it actually helps predict direction (it doesn't, honestly reported either way).
 
 **Live data integration**: everything above is a fixed historical backtest. `live_iv_check.py`
 pulls real-time options chains and earnings calendars from yfinance, decomposes an option
 price quoted weeks out into its earnings-specific component via variance additivity, and
 compares that to each ticker's own historical reaction pattern, turning the research into
 something I'd actually rerun before a real trade instead of a one-time report.
-`earnings_screener.py` scales that same comparison across the full 60-ticker universe in two
+`earnings_screener.py` scales that same comparison across the full 125-ticker universe in two
 passes (a cheap calendar check first, then the expensive options-chain pricing only for
 near-term reporters) and ranks the results, closer to a real screening tool than a
 single-ticker lookup, and reuses `live_iv_check.py`'s comparison function directly rather than
@@ -897,7 +1040,7 @@ that with proper compounding (`cumprod`) surfaced a second issue underneath it: 
 trade betting the full account in sequence, the corrected curve still hit exactly -100%. That's
 not evidence the strategy is uniquely terrible, it's what any sequence of trades does to a
 single undiversified account, good strategy or bad. Sizing each trade at a fixed 10% of capital
-removed the artifact and left a result (Sharpe -0.36, max drawdown -41%) that's actually
+removed the artifact and left a result (Sharpe -0.44, max drawdown -58%) that's actually
 readable, and still consistent with the null finding everywhere else in this project.
 
 **A wrong assumption about clustering, caught by actually running the numbers**: going into
@@ -935,6 +1078,17 @@ the clipping condition directly (`would_clip_to_zero` in `backtest_math.py`) ins
 gating on how many trading days out the expiration sits, with unit tests covering both the
 original far-dated case and this closer-in one.
 
+**A third live-tool bug, surfaced by widening the universe itself**: running the screener
+against the newly-expanded 125-ticker universe crashed on four thin, illiquid names (FMBH,
+LKFN, MMSI, SCHL) with a raw `IndexError` instead of a clean skip. Their nearest listed
+expiration turned out to have zero call or put contracts at all, something none of the
+original 60 tickers happened to trigger, so `.iloc[0]` on "the closest strike" quietly assumed
+at least one contract would always exist. Fixed by extracting the check into its own function
+(`chain_has_no_contracts` in `backtest_math.py`, tested the same way as the other two edge
+cases in this file) rather than only discovering more of these the hard way. The pattern
+across all three live-tool bugs is the same: each one was invisible against a small, familiar
+set of tickers and only showed up once the tool was pointed at something wider or more real.
+
 ## Running it
 
 ```bash
@@ -945,11 +1099,12 @@ There's also a `Makefile` (`make lint`, `make test`, `make pipeline`, `make dash
 wraps the commands below, if you'd rather use that.
 
 **Fast path, no API keys needed:** getting from an empty database to a fully working one the
-"real" way means re-ingesting 20 years of data across 60 tickers through two rate-limited free
-APIs, which took real elapsed time originally (Alpha Vantage's key alone stayed rate-limited
-over 24 hours at one point). That's a genuine reproducibility gap: anyone cloning this repo to
-check the work couldn't actually run it without spending that same time and their own API
-keys. `data_export/` has the full dataset already collected, committed as compressed CSVs:
+"real" way means re-ingesting 20 years of data across 125 tickers through free, often
+rate-limited APIs, which took real elapsed time originally (Alpha Vantage's key alone stayed
+rate-limited over 24 hours at one point). That's a genuine reproducibility gap: anyone cloning
+this repo to check the work couldn't actually run it without spending that same time and their
+own API keys. `data_export/` has the full dataset already collected, committed as compressed
+CSVs:
 
 ```bash
 python load_full_dataset.py               # restores daily_prices, earnings_events, ff_factors in seconds
@@ -967,10 +1122,11 @@ To refresh with newer data instead, or from a totally empty database, with `FMP_
 `ALPHAVANTAGE_API_KEY` set in `.env`:
 
 ```bash
-python ingest.py                          # large-cap tickers
-python ingest_yfinance.py                 # mid/small-cap tickers (no keys needed)
+python ingest.py                          # original 20 large-cap tickers
+python ingest_yfinance.py                 # original 40 mid/small-cap tickers (no keys needed)
 python backfill_earnings_yfinance.py      # fallback earnings source for any AV-rate-limited tickers
 python backfill_history.py                # extend price history back to 2006/IPO
+python ingest_expansion.py                # +65 tickers widening the universe to 125 (no keys needed)
 python data_quality_checks.py             # validate the loaded data
 make queries                              # standalone SQL showcase (business questions in pure SQL)
 python eda.py                             # quintile + significance analysis
@@ -994,8 +1150,10 @@ python straddle_backtest.py               # historical-vol-priced straddle P&L u
 python iron_condor_backtest.py            # same trade, capped loss, does defined risk change the picture?
 python garch_volatility_forecast.py       # GARCH(1,1) vs. rolling-window volatility, does it change anything?
 python garch_straddle_backtest.py         # full straddle/condor backtest repriced with GARCH, same events
+python holding_period_sensitivity.py      # does the straddle/condor conclusion hold at N=1,2,3,5 day holds?
 python volatility_crush_check.py          # does the Day-0 vol spike linger, or revert fast?
 python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on the headline correlations
+python vix_regime_analysis.py             # does the null result / volatility-selling picture hold by VIX regime?
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
@@ -1009,7 +1167,7 @@ historical result, it hits live market data:
 ```bash
 python live_iv_check.py                   # or: make live-check
 python live_iv_check.py AAPL MSFT          # pass any ticker(s); defaults to HOOD, NVDA, GOOGL
-python earnings_screener.py               # or: make screener; scans all 60 tickers, ranked
+python earnings_screener.py               # or: make screener; scans all 125 tickers, ranked
 python earnings_screener.py 14            # pass a custom horizon in days (default 30)
 ```
 

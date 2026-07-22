@@ -16,7 +16,7 @@ print("(tier_analysis.py already clusters standard errors by ticker in its regre
 print(" repeated events from the same company aren't independent draws. This asks whether the")
 print(" same problem shows up in a completely different tool: a bootstrap confidence interval")
 print(" around the headline Spearman correlations. A NAIVE bootstrap resamples individual events,")
-print(" quietly treating all 2,953 of them as independent. A CLUSTER bootstrap resamples whole")
+print(" quietly treating every one of them as independent. A CLUSTER bootstrap resamples whole")
 print(" tickers instead, so a company's 30-60 quarters of history move together, respecting the")
 print(" same non-independence tier_analysis.py already had to account for.)")
 print()

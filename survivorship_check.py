@@ -20,7 +20,7 @@ total_return = ((closes["last"] / closes["first"]) - 1) * 100
 spy = pd.read_sql("SELECT date, close FROM daily_prices WHERE symbol = 'SPY' ORDER BY date", engine)
 spy_return = ((spy["close"].iloc[-1] / spy["close"].iloc[0]) - 1) * 100
 
-print(f"Average total return across the 60-ticker universe: {total_return.mean():.1f}%")
+print(f"Average total return across the {len(total_return)}-ticker universe: {total_return.mean():.1f}%")
 print(f"Median total return: {total_return.median():.1f}%")
 print(f"SPY total return over the same calendar span: {spy_return:.1f}%")
 print()
