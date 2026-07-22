@@ -50,9 +50,7 @@ def main() -> None:
     if not candidates:
         return
 
-    # Reuses live_iv_check.py's build_richness_table for the actual computation (including
-    # its GARCH-based variance-netting) instead of duplicating that logic here, so the two
-    # tools can't quietly drift out of sync with each other over time.
+    # Reuses live_iv_check.py's build_richness_table so the two tools can't drift apart.
     full_result, messages = build_richness_table(candidates, engine)
     for message in messages:
         print(message)

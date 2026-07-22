@@ -114,10 +114,8 @@ def test_isolate_earnings_move_pct_matches_hand_calculation():
 
 
 def test_isolate_earnings_move_pct_clips_at_zero_instead_of_going_negative():
-    # This is the exact case a far-dated expiration produced during development: normal
-    # volatility over many non-event days can explain MORE variance than the whole straddle
-    # priced in, which would make the earnings-specific variance negative and its square root
-    # undefined. Clipped at zero rather than raising or returning NaN.
+    # Far-dated expiration case: normal vol over many non-event days can explain more
+    # variance than the straddle priced in, which would make this negative.
     result = isolate_earnings_move_pct(
         raw_expected_move_pct=11.45, normal_daily_vol_pct=2.36, non_event_trading_days=27
     )
@@ -131,10 +129,7 @@ def test_would_clip_to_zero_true_for_the_far_dated_regression_case():
 
 
 def test_would_clip_to_zero_true_even_within_a_short_horizon():
-    # The bug this caught live: AAPL was only 8 trading days out, well within a "short and
-    # therefore trustworthy" horizon, but its own recent realized vol was high enough that
-    # the netting assumption still broke down. Being close to the event doesn't guarantee
-    # this can't happen.
+    # AAPL case: 8 trading days out, but its own recent vol was hot enough to still clip.
     assert would_clip_to_zero(
         raw_expected_move_pct=4.9506, normal_daily_vol_pct=2.3679, non_event_trading_days=7
     ) is True
@@ -147,9 +142,7 @@ def test_would_clip_to_zero_false_when_the_straddle_price_comfortably_covers_nor
 
 
 def test_chain_has_no_contracts_true_when_either_side_is_empty():
-    # The exact bug this caught live: a handful of thin, illiquid tickers (added when the
-    # ticker universe was widened) list an expiration with zero call or put contracts, which
-    # crashed with an unhandled IndexError instead of a clean skip.
+    # A few thin tickers list an expiration with zero contracts on one side.
     has_calls = pd.DataFrame({"strike": [100.0], "bid": [1.0], "ask": [1.2]})
     no_contracts = pd.DataFrame({"strike": [], "bid": [], "ask": []})
     assert chain_has_no_contracts(no_contracts, has_calls) is True

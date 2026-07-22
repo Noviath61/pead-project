@@ -39,16 +39,13 @@ for tier in ["large", "mid", "small"]:
 
     observed_r = spearman_r(x_all, y_all)
 
-    # Naive bootstrap: resample individual events with replacement, ignoring that many of
-    # them come from the same 20 companies.
+    # Naive bootstrap: resample individual events, ignoring repeated companies.
     naive_draws = np.empty(N_BOOT)
     for b in range(N_BOOT):
         idx = RNG.integers(0, n_events, n_events)
         naive_draws[b] = spearman_r(x_all[idx], y_all[idx])
 
-    # Cluster bootstrap: resample whole tickers with replacement, keeping every event from
-    # a chosen ticker together, so a repeatedly-drawn company can't be mistaken for several
-    # independent ones.
+    # Cluster bootstrap: resample whole tickers, keeping each one's events together.
     ticker_to_indices = {t: np.where(symbols_all == t)[0] for t in tickers}
     cluster_draws = np.empty(N_BOOT)
     for b in range(N_BOOT):

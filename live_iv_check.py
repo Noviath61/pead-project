@@ -12,25 +12,14 @@ warnings.filterwarnings("ignore", category=UserWarning, module="arch")
 
 DEFAULT_TICKERS = ["HOOD", "NVDA", "GOOGL"]
 MIN_EVENTS_FOR_BASELINE = 5
-# Netting out "ordinary" volatility over the days between now and expiration assumes daily
-# vol stays roughly constant over that whole stretch - reasonable for a week or two, not for
-# a month-plus. Past this many trading days out, that assumption breaks down (in practice it
-# can even over-subtract to a nonsensical near-zero result), so this is flagged as unreliable
-# rather than shown as a real number.
+# Past this many trading days out, the constant-vol netting assumption below breaks down.
 RELIABLE_HORIZON_TRADING_DAYS = 10
 
 
 def historical_cumulative_jump_stats(
     symbol: str, trading_days_held: int, engine
 ) -> dict[str, float] | None:
-    # Earlier versions of this tool measured a single day's move (day0) only. Found live,
-    # while actually using this tool for a real trade, that the real risk window for an option
-    # is however many trading days pass between the report and expiration - which is 1 day for
-    # some tickers/expirations and several for others, not always the same. This measures the
-    # CUMULATIVE move from the close right before the report through exactly
-    # `trading_days_held` trading days later (matching however many days the live option
-    # actually has to run), normalized by that many days' worth of ordinary volatility
-    # (variance scales with sqrt(time), same convention used everywhere else in this project).
+    # Cumulative move from pre-report close through trading_days_held later, not just day0.
     events = pd.read_sql(
         "SELECT reported_date FROM earnings_events "
         "WHERE symbol = %(sym)s AND surprise_percentage != 'NaN' ORDER BY reported_date",
@@ -46,8 +35,6 @@ def historical_cumulative_jump_stats(
     ).reset_index(drop=True)
     prices["date"] = pd.to_datetime(prices["date"]).astype("datetime64[ns]")
     prices["ret"] = prices["close"].pct_change()
-    # Trailing 20-day vol as of just before each date - matches the SQL window convention
-    # (ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) used everywhere else in this project.
     prices["normal_daily_vol"] = prices["ret"].rolling(20).std().shift(1)
     prices["row_idx"] = prices.index
 
@@ -91,12 +78,8 @@ def current_daily_vol_pct(symbol: str, engine) -> float:
 
 
 def garch_forecast_daily_vol_pct(symbol: str, engine) -> float | None:
-    # garch_volatility_forecast.py already showed GARCH(1,1) tracks realized earnings-day
-    # moves measurably better than a flat rolling window (geomean jump ratio 1.06x vs 1.27x).
-    # Used here ONLY for the variance-netting step in live_expected_move, which just needs
-    # the best available estimate of "ordinary" daily vol - NOT for scaling the historical
-    # jump-ratio baseline, since that ratio was itself computed against rolling-window vol
-    # historically, and mixing the two would silently compare apples to oranges.
+    # Only for the variance-netting step below - not for scaling the historical jump-ratio
+    # baseline, which was computed against rolling-window vol and shouldn't mix methods.
     prices = pd.read_sql(
         "SELECT close FROM daily_prices WHERE symbol = %(sym)s ORDER BY date", engine, params={"sym": symbol}
     )
@@ -118,13 +101,7 @@ def _mid_price(row: pd.Series) -> float:
 
 
 def shift_to_reaction_date(earnings_date: datetime.date, report_time: str | None) -> datetime.date:
-    # Pure date logic, split out from likely_reaction_date() so it's unit-testable without a
-    # database: given an announcement date and a report-time label, return the date the market
-    # actually reacts on. Pre-market reporters react the same day; everything else (post-market
-    # or unknown) reacts the next trading day - defaulting to post-market is the safer
-    # assumption, since treating a pre-market reporter as post-market just picks one trading
-    # day later than strictly necessary, while the reverse mistake picks a contract that
-    # silently misses the move entirely (the exact bug this fixes, caught live on GOOGL).
+    # Split out from likely_reaction_date() so it's unit-testable without a database.
     if report_time == "pre-market":
         return earnings_date
     next_day = pd.Timestamp(earnings_date) + pd.tseries.offsets.BDay(1)
@@ -132,14 +109,8 @@ def shift_to_reaction_date(earnings_date: datetime.date, report_time: str | None
 
 
 def likely_reaction_date(symbol: str, earnings_date: datetime.date, engine) -> datetime.date:
-    # yfinance's calendar gives an earnings DATE but no pre/post-market flag, and that flag is
-    # the difference between "the reaction happens today" and "the reaction happens tomorrow" -
-    # found this the hard way live: GOOGL's calendar just says "2026-07-22," and the nearest
-    # expiration on/after that raw date is ALSO 2026-07-22, but GOOGL reports after that day's
-    # close, so that contract actually settles hours before the reaction exists. This project's
-    # own historical earnings_events table already knows GOOGL has reported post-market every
-    # single quarter on record, so use that (most recent report on file) as the best available
-    # predictor of the upcoming one.
+    # yfinance's calendar has no pre/post-market flag, so use this stock's own most recent
+    # historical report_time as the best predictor of the upcoming one.
     row = pd.read_sql(
         "SELECT report_time FROM earnings_events WHERE symbol = %(sym)s "
         "ORDER BY reported_date DESC LIMIT 1",
@@ -157,8 +128,7 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float, engine) -> dict
     earnings_dates = calendar.get("Earnings Date")
     if not earnings_dates:
         return None
-    # yfinance's calendar sometimes hasn't refreshed to the next quarter yet and returns a
-    # date that's already passed - only consider dates that are still upcoming.
+    # yfinance's calendar can lag a quarter behind - only consider dates still upcoming.
     today = datetime.date.today()
     upcoming_earnings_dates = [d for d in earnings_dates if d >= today]
     if not upcoming_earnings_dates:
@@ -174,10 +144,7 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float, engine) -> dict
 
     chain = ticker.option_chain(target_exp.isoformat())
     calls, puts = chain.calls.copy(), chain.puts.copy()
-    # Found by actually running the screener against a wider universe: a handful of thin,
-    # illiquid names list an expiration with no call or put contracts at all. Same "no usable
-    # comparison" skip as no options chain being available at all, rather than an unhandled
-    # IndexError two lines down.
+    # Some thin, illiquid names list an expiration with zero contracts on either side.
     if chain_has_no_contracts(calls, puts):
         return None
     calls["dist"] = (calls["strike"] - spot).abs()
@@ -188,30 +155,18 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float, engine) -> dict
     straddle_price = _mid_price(atm_call) + _mid_price(atm_put)
     raw_expected_move_pct = straddle_price / spot * 100
 
-    # The straddle prices the WHOLE period until expiration, not just the earnings day. When
-    # the nearest expiration is weeks away (e.g. earnings a month out with no closer weekly
-    # option), most of that price is ordinary day-to-day volatility having nothing to do with
-    # the event itself. isolate_earnings_move_pct backs out that piece using variance
-    # additivity (assumes daily vol stays roughly constant into the event, a real
-    # simplification, but far better than treating the whole-period price as the event move).
+    # The straddle prices the whole period to expiration, not just the earnings day - net out
+    # the non-event days' ordinary volatility to isolate the earnings-specific piece.
     trading_days_to_expiration = max(int(np.busday_count(today, target_exp)), 1)
     non_event_trading_days = max(trading_days_to_expiration - 1, 0)
     earnings_move_pct = isolate_earnings_move_pct(
         raw_expected_move_pct, normal_daily_vol_pct, non_event_trading_days
     )
 
-    # isolate_earnings_move_pct clips at zero when the assumed "normal" variance over the
-    # non-event days is as large as, or larger than, the whole straddle price. That's not a
-    # real answer, it means this stock's recent realized vol is running hot enough relative to
-    # its own near-term options that the netting assumption breaks down, regardless of how
-    # close the expiration is. Caught this exact case live (AAPL, 8 trading days out, well
-    # within the horizon check below, still clipped to 0.00%), so it needs its own guard.
     too_far_out = trading_days_to_expiration > RELIABLE_HORIZON_TRADING_DAYS
     variance_clipped = would_clip_to_zero(raw_expected_move_pct, normal_daily_vol_pct, non_event_trading_days)
 
-    # Trading days from the report itself (not from today) through expiration - the quantity
-    # that matters for finding the historically-comparable holding period, regardless of how
-    # many days away the report happens to be from whenever this check is run.
+    # Report-to-expiration, not today-to-expiration - the actual historical holding period.
     trading_days_report_to_expiration = max(int(np.busday_count(earnings_date, target_exp)), 1)
 
     return {
@@ -272,11 +227,6 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
             )
             continue
 
-        # The historical baseline has to be measured over the SAME number of trading days the
-        # live option actually has to run (see historical_cumulative_jump_stats), not a fixed
-        # single day - found this mismatch by actually using this tool for a real trade, where
-        # the option had 2 trading days to run and the old day0-only baseline was quietly
-        # comparing against a 1-day historical distribution instead.
         held_days = live["trading_days_report_to_expiration"]
         h = historical_cumulative_jump_stats(symbol, held_days, engine)
         if h is None:

@@ -18,8 +18,7 @@ print(" in daily_prices, is the REALIZED jump - and that's the number an option 
 print(" betting implied vol has overpriced.)")
 print()
 
-# Same day0 logic as create_view.sql: pre-market reports react same-day, everything else
-# (after-hours or unspecified) reacts on the next trading day.
+# Same day0 logic as create_view.sql: pre-market reacts same-day, else next trading day.
 QUERY = """
 WITH daily_returns AS (
     SELECT
@@ -69,17 +68,15 @@ n = len(df)
 mean_ratio = df["jump_ratio"].mean()
 median_ratio = df["jump_ratio"].median()
 
-# A handful of events had an exact zero-return day (no price change at all on day 0) -
-# genuine data, not an error, but log(0) is undefined, so those rows are excluded from the
-# log-scale stats only (13 of 2964 here). Everything else uses the full sample.
+# A handful of events have an exact zero-return day; log(0) is undefined, so those are
+# excluded from the log-scale stats only, not the rest.
 n_zero = int((df["jump_ratio"] == 0).sum())
 log_df = df[df["jump_ratio"] > 0].copy()
 log_df["log_jump_ratio"] = np.log(log_df["jump_ratio"])
 geo_mean_ratio = np.exp(log_df["log_jump_ratio"].mean())
 
-# One-sided test on log(ratio) against 0 (ratio=1), not the raw ratio - the ratio is
-# right-skewed (bounded at 0, long right tail), so the log makes the t-test's normality
-# assumption far more reasonable, same reasoning as using Spearman elsewhere in this project.
+# Log(ratio), not the raw ratio - it's right-skewed, so the log fits the t-test's normality
+# assumption better.
 t_stat, p_two_sided = ttest_1samp(log_df["log_jump_ratio"], popmean=0)
 p_one_sided = p_two_sided / 2 if t_stat > 0 else 1 - p_two_sided / 2
 

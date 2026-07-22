@@ -66,9 +66,8 @@ WHERE v.normal_daily_vol IS NOT NULL AND v.daily_return IS NOT NULL AND v.normal
 df = pd.read_sql(QUERY, engine)
 df["straddle_premium_pct"] = brenner_subrahmanyam_premium_pct(df["normal_daily_vol"])
 df["realized_move_pct"] = df["day0_return"].abs() * 100
-# Simplified one-period payoff at expiration: keep the premium, pay out whatever the stock
-# moved beyond it. Ignores bid/ask spread, commissions, assignment/pin risk, and early
-# closing the position before expiration, all of which a real options desk has to handle.
+# Simplified payoff at expiration: keep the premium, pay out whatever the stock moved.
+# Ignores spread, commissions, assignment risk, and closing early.
 df["pnl_pct"] = df["straddle_premium_pct"] - df["realized_move_pct"]
 
 n = len(df)
@@ -79,9 +78,7 @@ win_rate = (df["pnl_pct"] > 0).mean() * 100
 t_stat, p_two_sided = ttest_1samp(df["pnl_pct"], popmean=0)
 p_one_sided = p_two_sided / 2 if t_stat < 0 else 1 - p_two_sided / 2
 
-# How much richer than trailing historical vol would the market need to price the straddle,
-# on average, for this to break even? Solving mean(multiplier * premium - realized) = 0 for
-# multiplier, i.e. multiplier = mean(realized) / mean(premium).
+# Breakeven multiplier: mean(realized) / mean(premium), solving for where P&L averages zero.
 breakeven_multiplier = df["realized_move_pct"].mean() / df["straddle_premium_pct"].mean()
 
 mean_premium = df["straddle_premium_pct"].mean()

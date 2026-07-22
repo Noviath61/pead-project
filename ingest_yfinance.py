@@ -27,12 +27,8 @@ def load_earnings_yf(symbol: str) -> None:
             surprise = reported_eps - estimated_eps
             surprise_pct = row["Surprise(%)"]
 
-            # yfinance's own Surprise(%) is occasionally NaN specifically when reported
-            # exactly equals estimated (surprise=0), even though estimated_eps is nonzero
-            # and the percentage should just be 0.0 - recompute it ourselves in that case,
-            # using the same abs(estimate)-denominator convention yfinance's own non-NaN
-            # values already follow (confirmed by cross-checking against known-good rows),
-            # so it stays consistent rather than just falling back to a bare 0.
+            # yfinance returns NaN here when reported exactly equals estimated; recompute
+            # using the same abs(estimate)-denominator convention its own rows follow.
             if pd.isna(surprise_pct):
                 surprise_pct = (surprise / abs(estimated_eps) * 100) if estimated_eps != 0 else None
             else:

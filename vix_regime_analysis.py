@@ -30,9 +30,7 @@ drift = drift.sort_values("day0_date")
 drift = pd.merge_asof(drift, vix, left_on="day0_date", right_on="date", direction="backward")
 drift = drift.dropna(subset=["vix_close", "surprise_percentage", "abnormal_drift_10d_pct"])
 
-# Standard, textbook VIX bands (not sample-dependent terciles), so the cutoffs mean the same
-# thing here as they do anywhere else VIX is discussed: below 15 is a calm market, 15-25 is
-# normal, above 25 is a stressed/fearful one.
+# Standard VIX bands, not sample-dependent terciles: <15 calm, 15-25 normal, >25 stressed.
 def vix_regime(v: float) -> str:
     if v < 15:
         return "Low (<15, calm)"

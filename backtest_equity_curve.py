@@ -39,11 +39,8 @@ shorts["side"] = "short"
 
 trades = pd.concat([longs, shorts]).sort_values("day0_date").reset_index(drop=True)
 
-# Properly compounded wealth index (starting at 1.0), NOT a raw sum of percentage points -
-# a naive cumsum can wander below -100%, which is nonsensical for actual capital. Each trade
-# risks only POSITION_SIZE_FRACTION of capital (not 100%), reflecting a book that holds
-# several positions at once rather than one all-in bet after another - modeling true
-# position overlap/timing is out of scope for this illustration.
+# Properly compounded wealth index, not a raw cumsum (which can wander below -100%).
+# Each trade risks only POSITION_SIZE_FRACTION, not the full account.
 trades["wealth_index"] = compound_wealth_index(trades["trade_return_pct"], POSITION_SIZE_FRACTION)
 
 n_trades = len(trades)

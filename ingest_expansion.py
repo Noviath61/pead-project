@@ -2,13 +2,9 @@ import time
 from ingest import already_loaded
 from ingest_yfinance import load_earnings_yf, load_prices_yf
 
-# Every symbol here is a real, validated addition (checked against yfinance for both price
-# history back to PRICE_START and a usable earnings-dates history before being added) to
-# widen the original 60-ticker universe. Same 3-tier x 6-sector design as migrate_tiers.sql,
-# roughly +20 tickers per tier. All ingested via yfinance rather than Alpha Vantage/FMP, same
-# as the original 40 mid/small-cap tickers, so earnings history here is capped at the same
-# ~40-quarter (~10 year) window get_earnings_dates(limit=40) returns, not the full ~20-year
-# price history depth. Disclosed in the README rather than silently inconsistent.
+# Validated against yfinance before adding. Same tier/sector design as migrate_tiers.sql.
+# Earnings history here is capped at get_earnings_dates(limit=40), same as the original
+# mid/small-cap tickers - shorter than the full price history depth, noted in the README.
 TICKERS = [
     # large
     "ORCL", "CSCO", "IBM", "INTC",

@@ -13,12 +13,9 @@ from ingest import engine, UPSERT_EARNINGS, UPSERT_PRICE
 TEST_SYMBOL = "ZZZTEST"
 BENCHMARK_SYMBOL = "SPY"
 
-# NOTE: this date range is NOT assumed to be free of real data - it once was (before
-# real price history got extended back to 2006), and a version of this fixture that
-# relied on that assumption ended up permanently deleting real SPY history when that
-# assumption silently became false. The fixture below backs up and restores whatever
-# real SPY rows exist at these exact dates instead, so it is safe regardless of how
-# far back real ingested data ever extends.
+# Not assumed free of real data - an earlier version of this fixture assumed that and
+# deleted real SPY history once price history got extended back further. This one backs
+# up and restores whatever real rows exist at these dates instead.
 START_DATE = "2010-01-04"
 
 # Fixed, hand-chosen daily returns (not all identical, so volatility is nonzero
