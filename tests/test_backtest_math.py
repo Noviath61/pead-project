@@ -28,6 +28,15 @@ def test_brenner_subrahmanyam_premium_pct_custom_const():
     assert result.tolist() == pytest.approx([0.4, 0.8])
 
 
+def test_brenner_subrahmanyam_premium_pct_scales_by_sqrt_of_trading_days():
+    daily_vol = pd.Series([0.01])
+    result_1day = brenner_subrahmanyam_premium_pct(daily_vol, trading_days=1)
+    result_4day = brenner_subrahmanyam_premium_pct(daily_vol, trading_days=4)
+    # sqrt(4) = 2, so a 4-day holding period should be exactly double the 1-day price
+    assert result_4day.iloc[0] == pytest.approx(result_1day.iloc[0] * 2)
+    assert result_4day.iloc[0] == pytest.approx(1.6)
+
+
 def test_compound_wealth_index_full_size_matches_hand_calculation():
     # +10%, -10%, +20% compounded at full size: 1.00 -> 1.10 -> 0.99 -> 1.188
     returns = pd.Series([10.0, -10.0, 20.0])

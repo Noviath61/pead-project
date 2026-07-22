@@ -10,9 +10,12 @@ BRENNER_SUBRAHMANYAM_CONST = 0.8
 
 
 def brenner_subrahmanyam_premium_pct(
-    daily_vol: pd.Series, const: float = BRENNER_SUBRAHMANYAM_CONST
+    daily_vol: pd.Series, const: float = BRENNER_SUBRAHMANYAM_CONST, trading_days: int = 1
 ) -> pd.Series:
-    return const * daily_vol * 100
+    # trading_days=1 (the default) is the original single-day option every earlier caller in
+    # this project assumed. Straddle price scales with sqrt(T), so a multi-day holding period
+    # just needs that same sqrt(T) term applied on top of the daily-vol base case.
+    return const * daily_vol * 100 * (trading_days ** 0.5)
 
 
 def compound_wealth_index(trade_return_pct: pd.Series, position_size_fraction: float = 1.0) -> pd.Series:

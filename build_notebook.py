@@ -657,7 +657,58 @@ every interval without actually checking, and the numbers said otherwise.
 """)
 
 md("""\
-## 15. A few more angles
+## 15. Does the holding-period lesson from the live tool generalize?
+
+Fixing `live_iv_check.py` for a real trade (see section 17 below) exposed a blind spot in
+`straddle_backtest.py` and `iron_condor_backtest.py`: both price and resolve every trade over a
+single day, but a real option's holding period (from before the report to actual expiration)
+isn't always 1 trading day, and the extra days add real, independent variance, not just noise
+around the first day's number. `holding_period_sensitivity.py` applies that same lesson to the
+full 20-year, 60-ticker dataset instead of one ticker on one night: reprice both backtests at
+1, 2, 3, and 5 trading days of assumed holding period and see whether the conclusion holds up.
+""")
+
+code("""\
+holding_period_summary = pd.DataFrame({
+    "N_trading_days": [1, 2, 3, 5],
+    "n_events": [2964, 2963, 2960, 2957],
+    "mean_pnl_uncapped_pct": [-3.07, -2.89, -2.80, -2.56],
+    "win_rate_pct": [29.6, 35.1, 36.5, 39.6],
+    "breakeven_iv_multiple": [2.86, 2.24, 1.98, 1.69],
+    "mean_pnl_condor_pct": [-1.82, -1.93, -2.03, -2.01],
+    "worst_condor_pct": [-17.6, -23.3, -28.5, -36.8],
+})
+holding_period_summary
+""")
+
+md("""\
+Going in, I expected longer holding periods to make things worse, the way it did for GOOGL
+specifically that night. Historically, across the whole dataset, it's the opposite for the
+naked position: mean P&L improves (less negative) and the breakeven IV multiple needed drops
+as N grows. The explanation ties directly back to section 13 above: Brenner-Subrahmanyam's
+sqrt(T) scaling assumes the same daily volatility holds for every day in the holding period,
+but realized volatility after an event reverts toward normal (geometric mean ratio 0.94), not
+staying elevated. Pricing a longer straddle as if every day were as volatile as the event day
+itself means systematically over-collecting premium for the calmer days that follow, which
+works in the seller's favor here, on average, historically.
+
+The iron condor tells a different, cautionary story: capped mean P&L gets *worse* with a longer
+holding period, and the worst single event more than doubles (-17.6% to -36.8%). The wing cap
+is set as a multiple of the credit collected, and since that credit grows with sqrt(N) even
+though the "fair" price for the later, calmer days is smaller than that, the cap loosens in
+absolute terms faster than the real risk does, letting bigger tail losses through uncapped. A
+real defined-risk structure would need wing width set by expected volatility per day, not a
+flat multiple of a credit that's already overstated for longer holds - the same lesson from the
+live bug, showing up again in a different, structural way here.
+
+(Simplification, disclosed: this anchors on the raw report date for every ticker, N trading
+days later, rather than each ticker's own pre/post-market-adjusted reaction date. For
+post-market reporters, which is most of this universe, N=1 lines up with the existing day0-only
+scripts; for pre-market reporters it's one day later than day0.)
+""")
+
+md("""\
+## 16. A few more angles
 
 I also sliced the coverage-hypothesis test by sector instead of tier (one marginal raw
 result, Industrials, that doesn't survive correction), tested whether Day-0 volume spike
@@ -700,7 +751,7 @@ would have broken any naive SQL query. Fixed at the source and reran everything 
 """)
 
 md("""\
-## 16. A live version of the same question
+## 17. A live version of the same question
 
 Everything above is a fixed historical backtest with no options-chain data, a limitation
 named honestly throughout. `live_iv_check.py` closes that gap using yfinance's free live

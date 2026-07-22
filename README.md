@@ -508,6 +508,51 @@ were. Both intervals still comfortably straddle zero regardless, so the conclusi
 move, but "does clustering widen my interval" turned out to depend on which statistic you're
 clustering, not something safe to assume just because it mattered for the regression.
 
+### Does the holding-period lesson from the live tool generalize?
+
+Fixing `live_iv_check.py` for a real trade (see "Two more bugs found by actually using this
+for a real trade" below) exposed a blind spot in every backtest above: `straddle_backtest.py`
+and `iron_condor_backtest.py` both price and resolve every trade over a single day, but a real
+option's holding period (from before the report to actual expiration) isn't always 1 trading
+day, and the extra days add real, independent variance, not just noise around the first day's
+number. `holding_period_sensitivity.py` applies that same lesson to the full 20-year, 60-ticker
+dataset instead of one ticker on one night: reprice both backtests at 1, 2, 3, and 5 trading
+days of assumed holding period and see whether the conclusion holds up.
+
+| N (trading days) | Events | Mean P&L, naked | Win rate | Breakeven IV multiple | Mean P&L, condor | Worst event, condor |
+|---|---|---|---|---|---|---|
+| 1 | 2,964 | -3.07% | 29.6% | 2.86x | -1.82% | -17.6% |
+| 2 | 2,963 | -2.89% | 35.1% | 2.24x | -1.93% | -23.3% |
+| 3 | 2,960 | -2.80% | 36.5% | 1.98x | -2.03% | -28.5% |
+| 5 | 2,957 | -2.56% | 39.6% | 1.69x | -2.01% | -36.8% |
+
+Going in, I expected longer holding periods to make things worse, the way it did for GOOGL
+specifically that night. Historically, across the whole dataset, it's the opposite for the
+naked position: mean P&L improves (less negative) and the breakeven IV multiple needed drops
+as N grows. The explanation ties directly back to the volatility-crush finding above:
+Brenner-Subrahmanyam's sqrt(T) scaling assumes the same daily volatility holds for every day in
+the holding period, but realized volatility after an event reverts toward normal (geometric
+mean ratio 0.94), not staying elevated. Pricing a longer straddle as if every day were as
+volatile as the event day itself means systematically over-collecting premium for the calmer
+days that follow, which works in the seller's favor here, on average, historically.
+
+The iron condor tells a different, cautionary story: capped mean P&L gets *worse* with a longer
+holding period, and the worst single event more than doubles (-17.6% to -36.8%). The wing cap
+is set as a multiple of the credit collected, and since that credit grows with sqrt(N) even
+though the "fair" price for the later, calmer days is smaller than that, the cap loosens in
+absolute terms faster than the real risk does, letting bigger tail losses through uncapped. A
+real defined-risk structure would need wing width set by expected volatility per day, not a
+flat multiple of a credit that's already overstated for longer holds - the same lesson from the
+live bug, showing up again in a different, structural way here.
+
+![Holding period sensitivity](charts/holding_period_sensitivity.png)
+
+(Simplification, disclosed: this anchors on the raw report date for every ticker, N trading
+days later, rather than each ticker's own pre/post-market-adjusted reaction date. For
+post-market reporters, which is most of this universe, N=1 lines up with the existing day0-only
+scripts; for pre-market reporters it's one day later than day0. Fine for a sensitivity check
+across holding periods, not a byte-for-byte reproduction of those scripts' N=1 case.)
+
 ## Interpretation
 
 No significant relationship between surprise size and abnormal drift, in any tier, across
