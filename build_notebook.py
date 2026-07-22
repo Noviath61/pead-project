@@ -558,6 +558,33 @@ time-series model structurally can't have no matter how sophisticated it gets.
 """)
 
 md("""\
+`garch_volatility_forecast.py` only reported that gap as a single summary statistic (the
+breakeven multiplier), though, never rebuilt the actual straddle and iron condor backtests
+with GARCH pricing end to end. `garch_straddle_backtest.py` closes that: same 2,964 events,
+same Brenner-Subrahmanyam formula, same 3x-credit iron condor cap, priced off GARCH
+volatility instead of the rolling window, apples to apples on the identical sample.
+""")
+
+code("""\
+garch_backtest_summary = pd.DataFrame({
+    "metric": ["Mean P&L, naked straddle", "Win rate", "Breakeven IV multiplier",
+               "Mean P&L, 3x-credit iron condor", "Worst single event, iron condor"],
+    "rolling_20day": ["-2.92%", "31.4%", "2.64x", "-1.72%", "-17.6%"],
+    "garch": ["-2.58%", "36.1%", "2.22x", "-1.70%", "-18.9%"],
+})
+garch_backtest_summary
+""")
+
+md("""\
+Per-event P&L from the two pricing methods correlates at 0.98, and the tier pattern holds in
+both (small-cap worst, large-cap least bad). GARCH pricing is measurably less bad across
+every metric, consistent with the single-ticker check finding it a better volatility
+estimate, not a coincidence specific to whichever tickers that earlier check happened to use.
+Still doesn't flip the conclusion: selling this trade priced off either method loses money on
+average, historically, capped or naked.
+""")
+
+md("""\
 ## 13. Does the earnings-day volatility spike actually linger afterward?
 
 One more natural question out of the volatility work above: does the Day-0 spike bleed into
@@ -728,7 +755,10 @@ dramatically (-50% down to -18%), the real reason options traders size earnings 
 with defined risk in the first place. Swapping in a GARCH(1,1) model instead of a flat
 rolling window gets closer to the realized move (geometric mean jump ratio 1.06x versus
 1.27x) but doesn't close the gap, since no purely backward-looking time-series model can know
-an earnings date is coming. And the volatility itself doesn't linger,
+an earnings date is coming, confirmed by rerunning the full straddle and iron condor
+backtests with GARCH pricing end to end rather than trusting a single summary statistic
+(mean P&L improves from -2.92% to -2.58%, same conclusion either way). And the volatility
+itself doesn't linger,
 realized volatility in the ten days after an event actually reverts slightly below normal
 (p=2.3e-14), the same "one-time jump, not a regime change" story as the price-drift result,
 just measured a different way.

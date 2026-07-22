@@ -423,6 +423,30 @@ time-series models. That remaining gap is exactly the volatility risk premium op
 price in ahead of an earnings date, information a time-series model structurally can't have
 no matter how sophisticated it gets.
 
+`garch_volatility_forecast.py` only reported that gap as a single summary statistic, though
+(the breakeven multiplier), never rebuilt the actual straddle and iron condor backtests with
+GARCH pricing end to end. `garch_straddle_backtest.py` closes that: same 2,964 events, same
+Brenner-Subrahmanyam formula, same 3x-credit iron condor cap, priced off GARCH volatility
+instead of the rolling window, so the comparison is apples to apples rather than two
+different scripts on two different samples.
+
+| | Rolling 20-day | GARCH(1,1) |
+|---|---|---|
+| Mean P&L, naked straddle | -2.92% | -2.58% |
+| Win rate | 31.4% | 36.1% |
+| Breakeven IV multiplier | 2.64x | 2.22x |
+| Mean P&L, 3x-credit iron condor | -1.72% | -1.70% |
+| Worst single event, iron condor | -17.6% | -18.9% |
+
+Per-event P&L from the two pricing methods correlates at 0.98, and the tier pattern holds in
+both (small-cap worst, large-cap least bad). GARCH pricing is measurably less bad across every
+metric, exactly consistent with the single-ticker check finding it a better volatility
+estimate, not a coincidence specific to whichever tickers that earlier check happened to use.
+It still doesn't flip the conclusion: selling this trade priced off either method loses money
+on average, historically, whether capped or naked.
+
+![Straddle P&L: rolling vs. GARCH pricing, same events](charts/garch_straddle_backtest.png)
+
 ### Does the earnings-day volatility spike actually linger afterward?
 
 One more natural question out of the volatility work above: does the Day-0 spike bleed into
@@ -705,9 +729,11 @@ the question that actually matters for selling options around earnings, an optio
 backtest using the Brenner-Subrahmanyam approximation to convert historical volatility into
 an at-the-money straddle price, a defined-risk (iron condor) variant of that backtest showing
 how capping the loss changes both the average outcome and the tail, a GARCH(1,1)
-volatility-forecasting model checked against the simpler rolling-window estimate, a
-volatility-persistence check on whether the Day-0 spike lingers or reverts, bootstrap
-confidence intervals comparing naive to cluster-level resampling on the headline
+volatility-forecasting model checked against the simpler rolling-window estimate and then
+carried all the way through to a full apples-to-apples repricing of both backtests on the
+same 2,964 events rather than left as a single summary statistic, a volatility-persistence
+check on whether the Day-0 spike lingers or reverts, bootstrap confidence intervals
+comparing naive to cluster-level resampling on the headline
 correlations, and a feature-engineering follow-up feeding the volatility work's strongest
 standalone signal back into the walk-forward classifier to check whether it actually helps
 predict direction (it doesn't, honestly reported either way).
@@ -874,6 +900,7 @@ python volatility_risk_premium.py         # earnings-day move vs. normal-day vol
 python straddle_backtest.py               # historical-vol-priced straddle P&L using Brenner-Subrahmanyam
 python iron_condor_backtest.py            # same trade, capped loss, does defined risk change the picture?
 python garch_volatility_forecast.py       # GARCH(1,1) vs. rolling-window volatility, does it change anything?
+python garch_straddle_backtest.py         # full straddle/condor backtest repriced with GARCH, same events
 python volatility_crush_check.py          # does the Day-0 vol spike linger, or revert fast?
 python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on the headline correlations
 pytest tests/ -v                          # test suite

@@ -43,6 +43,7 @@ pipeline:
 	python straddle_backtest.py
 	python iron_condor_backtest.py
 	python garch_volatility_forecast.py
+	python garch_straddle_backtest.py
 	python volatility_crush_check.py
 	python bootstrap_confidence_intervals.py
 
