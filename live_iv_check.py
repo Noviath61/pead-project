@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from db import get_engine
-from backtest_math import isolate_earnings_move_pct
+from backtest_math import isolate_earnings_move_pct, would_clip_to_zero
 
 DEFAULT_TICKERS = ["HOOD", "NVDA", "GOOGL"]
 MIN_EVENTS_FOR_BASELINE = 5
@@ -14,18 +14,6 @@ MIN_EVENTS_FOR_BASELINE = 5
 # can even over-subtract to a nonsensical near-zero result), so this is flagged as unreliable
 # rather than shown as a real number.
 RELIABLE_HORIZON_TRADING_DAYS = 10
-
-print("=== Live check: is the market's expected earnings move rich or cheap vs. this stock's history? ===")
-print("(Every volatility section in this project's README ends on the same disclosed limitation:")
-print(" there's no options-chain data, so nothing here can say whether real implied volatility is")
-print(" priced richly enough to be worth selling. yfinance actually provides free live options")
-print(" chains and earnings calendars, so this closes that gap directly: pull the nearest expiration")
-print(" to each ticker's next earnings date, price its at-the-money straddle, and compare that")
-print(" market-implied expected move to what this project's own historical data says is typical for")
-print(" that specific stock. Unlike every other script here, this one is NOT a reproducible backtest,")
-print(" it queries live market data and today's earnings calendar, so the numbers below are a")
-print(" snapshot as of whenever this is run, not a fixed historical result.)")
-print()
 
 HISTORICAL_QUERY = """
 WITH daily_returns AS (
@@ -101,7 +89,13 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
     earnings_dates = calendar.get("Earnings Date")
     if not earnings_dates:
         return None
-    earnings_date = min(earnings_dates)
+    # yfinance's calendar sometimes hasn't refreshed to the next quarter yet and returns a
+    # date that's already passed - only consider dates that are still upcoming.
+    today = datetime.date.today()
+    upcoming_earnings_dates = [d for d in earnings_dates if d >= today]
+    if not upcoming_earnings_dates:
+        return None
+    earnings_date = min(upcoming_earnings_dates)
 
     expirations = [datetime.datetime.strptime(e, "%Y-%m-%d").date() for e in ticker.options]
     candidates = [e for e in expirations if e >= earnings_date]
@@ -125,12 +119,20 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
     # the event itself. isolate_earnings_move_pct backs out that piece using variance
     # additivity (assumes daily vol stays roughly constant into the event, a real
     # simplification, but far better than treating the whole-period price as the event move).
-    today = datetime.date.today()
     trading_days_to_expiration = max(int(np.busday_count(today, target_exp)), 1)
     non_event_trading_days = max(trading_days_to_expiration - 1, 0)
     earnings_move_pct = isolate_earnings_move_pct(
         raw_expected_move_pct, normal_daily_vol_pct, non_event_trading_days
     )
+
+    # isolate_earnings_move_pct clips at zero when the assumed "normal" variance over the
+    # non-event days is as large as, or larger than, the whole straddle price. That's not a
+    # real answer, it means this stock's recent realized vol is running hot enough relative to
+    # its own near-term options that the netting assumption breaks down, regardless of how
+    # close the expiration is. Caught this exact case live (AAPL, 8 trading days out, well
+    # within the horizon check below, still clipped to 0.00%), so it needs its own guard.
+    too_far_out = trading_days_to_expiration > RELIABLE_HORIZON_TRADING_DAYS
+    variance_clipped = would_clip_to_zero(raw_expected_move_pct, normal_daily_vol_pct, non_event_trading_days)
 
     return {
         "spot": spot,
@@ -140,11 +142,26 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
         "trading_days_to_expiration": trading_days_to_expiration,
         "raw_expected_move_pct": raw_expected_move_pct,
         "expected_move_pct": earnings_move_pct,
-        "reliable": trading_days_to_expiration <= RELIABLE_HORIZON_TRADING_DAYS,
+        "too_far_out": too_far_out,
+        "variance_clipped": variance_clipped,
+        "reliable": not (too_far_out or variance_clipped),
     }
 
 
 def main() -> None:
+    print("=== Live check: is the market's expected earnings move rich or cheap vs. this stock's "
+          "history? ===")
+    print("(Every volatility section in this project's README ends on the same disclosed limitation:")
+    print(" there's no options-chain data, so nothing here can say whether real implied volatility is")
+    print(" priced richly enough to be worth selling. yfinance actually provides free live options")
+    print(" chains and earnings calendars, so this closes that gap directly: pull the nearest expiration")
+    print(" to each ticker's next earnings date, price its at-the-money straddle, and compare that")
+    print(" market-implied expected move to what this project's own historical data says is typical for")
+    print(" that specific stock. Unlike every other script here, this one is NOT a reproducible backtest,")
+    print(" it queries live market data and today's earnings calendar, so the numbers below are a")
+    print(" snapshot as of whenever this is run, not a fixed historical result.)")
+    print()
+
     symbols = sys.argv[1:] or DEFAULT_TICKERS
     engine = get_engine()
     hist_stats = historical_jump_stats(symbols, engine)
@@ -165,7 +182,7 @@ def main() -> None:
         if live is None:
             print(f"{symbol}: no upcoming earnings date or no options chain available from yfinance")
             continue
-        if not live["reliable"]:
+        if live["too_far_out"]:
             print(f"{symbol}: nearest available expiration ({live['expiration']}) is "
                   f"{live['trading_days_to_expiration']} trading days out for its "
                   f"{live['earnings_date']} earnings date, no closer weekly option exists yet. "
@@ -173,6 +190,13 @@ def main() -> None:
                   f"earnings-specific move reliably (netting out a month of assumed-constant "
                   f"daily vol is a much shakier assumption than netting out a few days). Check "
                   f"back closer to the event, once a nearer-dated option is listed.")
+            continue
+        if live["variance_clipped"]:
+            print(f"{symbol}: this stock's recent realized volatility ({vol_now:.2f}%/day) is high "
+                  f"enough relative to its near-term option prices that netting it out over the "
+                  f"non-event days would subtract more variance than the straddle actually costs. "
+                  f"That's not a real 0% expected move, it means the netting assumption (volatility "
+                  f"stays constant into the event) doesn't hold for this stock right now.")
             continue
 
         historical_typical_move_pct = h["geo_mean_jump_ratio"] * vol_now

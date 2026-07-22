@@ -542,14 +542,55 @@ square root undefined. Fixed by clipping at zero, and by refusing to report a re
 once the expiration is far enough out that the whole approach stops being trustworthy, rather
 than quietly returning a number that looked plausible but wasn't.
 
+### Scaling it up: a screener across the whole universe
+
+`live_iv_check.py` checks one ticker at a time. `earnings_screener.py` runs the same
+comparison across all 60 tracked tickers and ranks the results, so instead of remembering to
+check a handful of names by hand, it surfaces whichever upcoming earnings currently look the
+most mispriced relative to that stock's own history, across the whole universe at once. It
+runs in two passes: a cheap calendar-only check on all 60 tickers to find who reports soon,
+then the full options-chain pricing only for that shorter list.
+
+Run the same day, scanning for earnings in the next 30 days, 36 of 60 tickers qualified, and
+9 produced a usable comparison after skipping names with no historical baseline, no options
+data, or an unreliable netting assumption:
+
+| Ticker | Richness ratio |
+|---|---|
+| BA | 5.19x richer |
+| LMT | 3.30x richer |
+| GOOGL | 1.44x richer |
+| MSFT | 1.42x richer |
+| TDOC | 1.25x richer |
+| AMZN | 1.11x richer |
+| HOOD | 0.55x cheaper |
+| META | 0.34x cheaper |
+| TSLA | 0.32x cheaper |
+
+BA stands out: its own historical geometric-mean jump ratio is just 0.48x (49 events, a
+genuinely calm historical earnings reactor), but the market is currently pricing in an
+earnings-specific move of 4.56% against a historically-typical move of only 0.88% at its
+current volatility level, more than 5x. Plausible given Boeing's well-documented recent
+operational troubles, and exactly the kind of thing a screener across the whole universe
+catches that checking three names by hand wouldn't.
+
+Building the screener surfaced a second real bug, more general than the first: even within
+the 10-trading-day "reliable" horizon, if a stock's own recent realized volatility happens to
+be running hot relative to what its near-term options currently price, the same variance
+subtraction can still clip to zero. AAPL hit this live during development (8 trading days
+out, comfortably inside the horizon, still clipped) - being close to the event doesn't
+guarantee the netting assumption holds. Fixed by checking for this directly (`would_clip_to_zero`
+in `backtest_math.py`, with its own unit tests including this exact case) rather than trusting
+proximity to the event as a sufficient safety check.
+
 This is descriptive context from this project's own historical data, not a trading signal or
-a recommendation, and it isn't reproducible the way every other result in this README is:
-it queries live market data and today's earnings calendar, so re-running it later will give
-different numbers as prices, dates, and available expirations change. That's the point. Every
-other script here answers a fixed historical question; this one is meant to actually be rerun
-before a real trade, on real tickers I hold, to see whether current pricing looks rich or
-cheap relative to that stock's own past earnings reactions, which is the version of this
-project I'd actually reach for before selling premium into an earnings date.
+a recommendation, and neither script is reproducible the way every other result in this
+README is: they query live market data and today's earnings calendar, so re-running them
+later will give different numbers as prices, dates, and available expirations change. That's
+the point. Every other script here answers a fixed historical question; these are meant to
+actually be rerun before a real trade, to see whether current pricing looks rich or cheap
+relative to that stock's own past earnings reactions, which is the version of this project
+I'd actually reach for before selling premium into an earnings date.
 
 ## Limitations
 
@@ -594,13 +635,14 @@ project I'd actually reach for before selling premium into an earnings date.
   part of what you collect pays for the protective wings, so this overstates the condor's real
   edge somewhat. The 3x wing-width multiplier is a representative choice, not a fitted or
   optimized parameter
-- `live_iv_check.py`'s earnings-only decomposition assumes this stock's daily volatility stays
-  roughly constant right up until the event, when real-world IV often creeps up in the days
-  just before earnings. It also picks the strike nearest to spot rather than true delta-50
-  ATM, uses bid/ask midpoint pricing that can be stale for illiquid strikes, and per-ticker
-  historical samples are small for newer names (HOOD has a bit over a decade of quarters).
-  Results are only shown when the nearest expiration is within 10 trading days of today,
-  specifically because the underlying assumption breaks down further out than that
+- `live_iv_check.py` and `earnings_screener.py`'s earnings-only decomposition assumes this
+  stock's daily volatility stays roughly constant right up until the event, when real-world IV
+  often creeps up in the days just before earnings. They also pick the strike nearest to spot
+  rather than true delta-50 ATM, use bid/ask midpoint pricing that can be stale for illiquid
+  strikes, and per-ticker historical samples are small for newer names (HOOD has a bit over a
+  decade of quarters). Results are only shown when the nearest expiration is within 10 trading
+  days of today AND the variance subtraction doesn't clip to zero, since either case means the
+  underlying assumption has broken down for that specific ticker
 
 ## What this demonstrates
 
@@ -641,6 +683,10 @@ pulls real-time options chains and earnings calendars from yfinance, decomposes 
 price quoted weeks out into its earnings-specific component via variance additivity, and
 compares that to each ticker's own historical reaction pattern, turning the research into
 something I'd actually rerun before a real trade instead of a one-time report.
+`earnings_screener.py` scales that same comparison across the full 60-ticker universe in two
+passes (a cheap calendar check first, then the expensive options-chain pricing only for
+near-term reporters) and ranks the results, closer to a real screening tool than a
+single-ticker lookup.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, a second suite of pure unit
@@ -711,6 +757,16 @@ so the math never breaks, and, more importantly, stop reporting a number at all 
 nearest expiration is more than 10 trading days out, since past that point the method itself
 isn't reliable regardless of how the arithmetic is guarded.
 
+**The same bug, one horizon check later**: building `earnings_screener.py` to scan the whole
+universe caught a second, more general version of the same problem. AAPL's nearest expiration
+was only 8 trading days out, comfortably inside the "reliable" horizon from the fix above, and
+it still clipped to 0.00%, because its own recent realized volatility happened to be running
+hot enough relative to its near-term option prices that the netting assumption broke down
+anyway. Proximity to the event isn't a sufficient guarantee on its own. Fixed by checking for
+the clipping condition directly (`would_clip_to_zero` in `backtest_math.py`) instead of only
+gating on how many trading days out the expiration sits, with unit tests covering both the
+original far-dated case and this closer-in one.
+
 ## Running it
 
 ```bash
@@ -763,6 +819,8 @@ historical result, it hits live market data:
 ```bash
 python live_iv_check.py                   # or: make live-check
 python live_iv_check.py AAPL MSFT          # pass any ticker(s); defaults to HOOD, NVDA, GOOGL
+python earnings_screener.py               # or: make screener; scans all 60 tickers, ranked
+python earnings_screener.py 14            # pass a custom horizon in days (default 30)
 ```
 
 The dashboard also runs with no database at all, falling back to the committed

@@ -1,4 +1,4 @@
-.PHONY: setup test lint typecheck pipeline queries dashboard notebook live-check clean
+.PHONY: setup test lint typecheck pipeline queries dashboard notebook live-check screener clean
 
 setup:
 	./setup.sh
@@ -45,6 +45,9 @@ queries:
 
 live-check:
 	python live_iv_check.py
+
+screener:
+	python earnings_screener.py
 
 dashboard:
 	streamlit run dashboard.py

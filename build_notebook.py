@@ -684,13 +684,21 @@ that price (netting out ordinary volatility over any non-event days between now 
 expiration, since a far-out option mostly reflects normal day-to-day movement), and compares
 it to that specific ticker's own historical earnings-day pattern.
 
+`earnings_screener.py` scales the same comparison across all 60 tracked tickers instead of
+one at a time: a cheap calendar-only pass finds who reports soon, then the full options-chain
+pricing runs only on that shorter list, and the results get ranked by how rich or cheap
+current pricing looks relative to each stock's own history.
+
 Deliberately not reproduced here with numbers: unlike everything else in this notebook,
-its output is a live snapshot that's already stale by the time anyone else runs it, prices,
-dates, and available expirations all move. It's the one piece of this project meant to
+their output is a live snapshot that's already stale by the time anyone else runs it, prices,
+dates, and available expirations all move. These are the one part of this project meant to
 actually be rerun before a real trade rather than read as a fixed result. See `README.md`
-for a sample run and the full methodology, including a real bug this caught during
-development (a too-far-out expiration made the variance-netting math go negative, fixed by
-refusing to report a number past a 10-trading-day horizon instead of just clipping it quietly).
+for a sample run and the full methodology, including two real bugs this caught during
+development: a too-far-out expiration made the variance-netting math go negative (fixed by
+refusing to report a number past a 10-trading-day horizon), and later, building the screener,
+a name well within that horizon still clipped to zero because its own recent volatility was
+running hot relative to its near-term options, so proximity to the event alone wasn't
+actually a sufficient safety check.
 """)
 
 md("""\

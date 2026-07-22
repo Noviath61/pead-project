@@ -12,6 +12,7 @@ from backtest_math import (
     max_drawdown_pct,
     cap_losses,
     isolate_earnings_move_pct,
+    would_clip_to_zero,
 )
 
 
@@ -111,3 +112,25 @@ def test_isolate_earnings_move_pct_clips_at_zero_instead_of_going_negative():
         raw_expected_move_pct=11.45, normal_daily_vol_pct=2.36, non_event_trading_days=27
     )
     assert result == pytest.approx(0.0)
+
+
+def test_would_clip_to_zero_true_for_the_far_dated_regression_case():
+    assert would_clip_to_zero(
+        raw_expected_move_pct=11.45, normal_daily_vol_pct=2.36, non_event_trading_days=27
+    ) is True
+
+
+def test_would_clip_to_zero_true_even_within_a_short_horizon():
+    # The bug this caught live: AAPL was only 8 trading days out, well within a "short and
+    # therefore trustworthy" horizon, but its own recent realized vol was high enough that
+    # the netting assumption still broke down. Being close to the event doesn't guarantee
+    # this can't happen.
+    assert would_clip_to_zero(
+        raw_expected_move_pct=4.9506, normal_daily_vol_pct=2.3679, non_event_trading_days=7
+    ) is True
+
+
+def test_would_clip_to_zero_false_when_the_straddle_price_comfortably_covers_normal_vol():
+    assert would_clip_to_zero(
+        raw_expected_move_pct=6.6406, normal_daily_vol_pct=1.8260, non_event_trading_days=7
+    ) is False

@@ -41,3 +41,15 @@ def isolate_earnings_move_pct(
     normal_variance = (normal_daily_vol_pct / 100) ** 2 * non_event_trading_days
     earnings_variance = max(total_variance - normal_variance, 0.0)
     return (earnings_variance ** 0.5) * 100
+
+
+def would_clip_to_zero(
+    raw_expected_move_pct: float, normal_daily_vol_pct: float, non_event_trading_days: int
+) -> bool:
+    # True whenever isolate_earnings_move_pct's clipping actually bound, meaning the "normal"
+    # variance assumption alone explains as much or more than the whole option price - not a
+    # real 0% answer, a sign the underlying assumption (vol stays constant into the event)
+    # doesn't hold well enough here to trust the result at all.
+    total_variance = (raw_expected_move_pct / 100) ** 2
+    normal_variance = (normal_daily_vol_pct / 100) ** 2 * non_event_trading_days
+    return normal_variance >= total_variance
