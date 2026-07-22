@@ -148,55 +148,46 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
     }
 
 
-def main() -> None:
-    print("=== Live check: is the market's expected earnings move rich or cheap vs. this stock's "
-          "history? ===")
-    print("(Every volatility section in this project's README ends on the same disclosed limitation:")
-    print(" there's no options-chain data, so nothing here can say whether real implied volatility is")
-    print(" priced richly enough to be worth selling. yfinance actually provides free live options")
-    print(" chains and earnings calendars, so this closes that gap directly: pull the nearest expiration")
-    print(" to each ticker's next earnings date, price its at-the-money straddle, and compare that")
-    print(" market-implied expected move to what this project's own historical data says is typical for")
-    print(" that specific stock. Unlike every other script here, this one is NOT a reproducible backtest,")
-    print(" it queries live market data and today's earnings calendar, so the numbers below are a")
-    print(" snapshot as of whenever this is run, not a fixed historical result.)")
-    print()
-
-    symbols = sys.argv[1:] or DEFAULT_TICKERS
-    engine = get_engine()
+def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list[str]]:
     hist_stats = historical_jump_stats(symbols, engine)
-
     rows = []
+    messages = []
+
     for symbol in symbols:
         h = hist_stats.get(symbol)
         if h is None:
-            print(f"{symbol}: fewer than {MIN_EVENTS_FOR_BASELINE} historical earnings events in this "
-                  f"project's data, skipping (not a reliable baseline)")
+            messages.append(f"{symbol}: fewer than {MIN_EVENTS_FOR_BASELINE} historical earnings "
+                             f"events in this project's data, skipping (not a reliable baseline)")
             continue
         vol_now = current_daily_vol_pct(symbol, engine)
         try:
             live = live_expected_move(symbol, vol_now)
         except Exception as exc:
-            print(f"{symbol}: skipped, live data lookup failed ({exc})")
+            messages.append(f"{symbol}: skipped, live data lookup failed ({exc})")
             continue
         if live is None:
-            print(f"{symbol}: no upcoming earnings date or no options chain available from yfinance")
+            messages.append(f"{symbol}: no upcoming earnings date or no options chain available "
+                             f"from yfinance")
             continue
         if live["too_far_out"]:
-            print(f"{symbol}: nearest available expiration ({live['expiration']}) is "
-                  f"{live['trading_days_to_expiration']} trading days out for its "
-                  f"{live['earnings_date']} earnings date, no closer weekly option exists yet. "
-                  f"That's too far out for this project's vol-netting method to isolate the "
-                  f"earnings-specific move reliably (netting out a month of assumed-constant "
-                  f"daily vol is a much shakier assumption than netting out a few days). Check "
-                  f"back closer to the event, once a nearer-dated option is listed.")
+            messages.append(
+                f"{symbol}: nearest available expiration ({live['expiration']}) is "
+                f"{live['trading_days_to_expiration']} trading days out for its "
+                f"{live['earnings_date']} earnings date, no closer weekly option exists yet. "
+                f"That's too far out for this project's vol-netting method to isolate the "
+                f"earnings-specific move reliably (netting out a month of assumed-constant "
+                f"daily vol is a much shakier assumption than netting out a few days). Check "
+                f"back closer to the event, once a nearer-dated option is listed."
+            )
             continue
         if live["variance_clipped"]:
-            print(f"{symbol}: this stock's recent realized volatility ({vol_now:.2f}%/day) is high "
-                  f"enough relative to its near-term option prices that netting it out over the "
-                  f"non-event days would subtract more variance than the straddle actually costs. "
-                  f"That's not a real 0% expected move, it means the netting assumption (volatility "
-                  f"stays constant into the event) doesn't hold for this stock right now.")
+            messages.append(
+                f"{symbol}: this stock's recent realized volatility ({vol_now:.2f}%/day) is high "
+                f"enough relative to its near-term option prices that netting it out over the "
+                f"non-event days would subtract more variance than the straddle actually costs. "
+                f"That's not a real 0% expected move, it means the netting assumption (volatility "
+                f"stays constant into the event) doesn't hold for this stock right now."
+            )
             continue
 
         historical_typical_move_pct = h["geo_mean_jump_ratio"] * vol_now
@@ -216,11 +207,33 @@ def main() -> None:
             "richness_ratio": round(richness_ratio, 2),
         })
 
-    if not rows:
+    return pd.DataFrame(rows), messages
+
+
+def main() -> None:
+    print("=== Live check: is the market's expected earnings move rich or cheap vs. this stock's "
+          "history? ===")
+    print("(Every volatility section in this project's README ends on the same disclosed limitation:")
+    print(" there's no options-chain data, so nothing here can say whether real implied volatility is")
+    print(" priced richly enough to be worth selling. yfinance actually provides free live options")
+    print(" chains and earnings calendars, so this closes that gap directly: pull the nearest expiration")
+    print(" to each ticker's next earnings date, price its at-the-money straddle, and compare that")
+    print(" market-implied expected move to what this project's own historical data says is typical for")
+    print(" that specific stock. Unlike every other script here, this one is NOT a reproducible backtest,")
+    print(" it queries live market data and today's earnings calendar, so the numbers below are a")
+    print(" snapshot as of whenever this is run, not a fixed historical result.)")
+    print()
+
+    symbols = sys.argv[1:] or DEFAULT_TICKERS
+    engine = get_engine()
+    result, messages = build_richness_table(symbols, engine)
+    for message in messages:
+        print(message)
+
+    if result.empty:
         print("\nNo tickers produced a usable comparison (see skip reasons above).")
         return
 
-    result = pd.DataFrame(rows)
     print()
     print(result.to_string(index=False))
     print()

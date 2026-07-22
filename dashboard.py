@@ -175,6 +175,47 @@ except FileNotFoundError:
 
 st.divider()
 
+st.subheader("Live check: is the market pricing this correctly right now?")
+st.caption(
+    "Pulls real options-chain data and today's earnings calendar from yfinance, and compares "
+    "the market's current expected move to this specific ticker's own historical earnings "
+    "reaction. Unlike everything else on this page, this is not reproducible: it reflects "
+    "live prices and today's earnings calendar, not the fixed historical dataset."
+)
+if data_source != "live database":
+    st.caption(
+        "Needs a live database connection for the historical baseline query, not available "
+        "in this environment. Run this locally with Postgres to use this section."
+    )
+else:
+    @st.cache_data(ttl=900)
+    def run_live_check(symbols: tuple[str, ...]):
+        from live_iv_check import build_richness_table
+        return build_richness_table(list(symbols), get_engine())
+
+    symbols_input = st.text_input("Tickers (comma-separated)", value="HOOD, NVDA, GOOGL")
+    if st.button("Run live check"):
+        symbols = tuple(s.strip().upper() for s in symbols_input.split(",") if s.strip())
+        try:
+            with st.spinner("Pulling live options data from yfinance..."):
+                live_result, live_messages = run_live_check(symbols)
+        except Exception as exc:
+            st.error(f"Live check failed: {exc}")
+        else:
+            for message in live_messages:
+                st.caption(message)
+            if live_result.empty:
+                st.caption("No tickers produced a usable comparison.")
+            else:
+                st.dataframe(live_result, use_container_width=True, hide_index=True)
+                st.caption(
+                    "Descriptive context from this project's own historical data, not a trading "
+                    "signal or a recommendation. Results cached for 15 minutes to avoid "
+                    "hammering yfinance on repeated clicks."
+                )
+
+st.divider()
+
 st.subheader("Ticker drill-down")
 symbol = st.selectbox("Symbol", options=sorted(filtered["symbol"].unique()))
 ticker_df = filtered[filtered["symbol"] == symbol].sort_values("reported_date")

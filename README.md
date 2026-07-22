@@ -590,7 +590,10 @@ later will give different numbers as prices, dates, and available expirations ch
 the point. Every other script here answers a fixed historical question; these are meant to
 actually be rerun before a real trade, to see whether current pricing looks rich or cheap
 relative to that stock's own past earnings reactions, which is the version of this project
-I'd actually reach for before selling premium into an earnings date.
+I'd actually reach for before selling premium into an earnings date. The same comparison for
+a hand-picked list of tickers is also built into the dashboard (button-gated, so it only hits
+yfinance when asked, and cached for 15 minutes), for anyone who'd rather click than run a
+script.
 
 ## Limitations
 
@@ -694,8 +697,11 @@ tests (`backtest_math.py`) covering the compounding, loss-capping, and options-p
 shared by the backtest scripts, hand-calculated and asserted independently of the
 implementation, `ruff` linting and `mypy` type checking both wired into CI alongside the test
 suite, a `Makefile` for the common
-commands, a Streamlit dashboard covering both the PEAD and the volatility/options tracks with
-a static-snapshot fallback for when there's no live database, a narrative Jupyter notebook as
+commands, a Streamlit dashboard covering both the PEAD and the volatility/options tracks, plus
+a live section that pulls real options-chain data on demand (button-gated and cached for 15
+minutes so it doesn't hammer yfinance on every rerun, verified end to end with
+`streamlit.testing.v1.AppTest` rather than just eyeballing it in a browser), with a
+static-snapshot fallback for when there's no live database, a narrative Jupyter notebook as
 a companion to the pipeline scripts, and a shared
 `db.py` module (`get_engine()`) that the 25+ analysis scripts now all import instead of each
 repeating its own copy of the same connection-string boilerplate, a straightforward DRY
