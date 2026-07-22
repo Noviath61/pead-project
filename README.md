@@ -68,17 +68,24 @@ flowchart LR
     YF[yfinance] --> DB
     FMP[Financial Modeling Prep] --> DB
     FF[Ken French data library] --> DB
+    DB -.-> EXPORT[data_export/*.csv.gz\nfull dataset, reloadable in seconds]
+    EXPORT -.-> DB
     DB --> VIEW[earnings_drift SQL view]
     VIEW --> STATS[Stats: quintiles, cluster-robust\nregression, bootstrap CI, power analysis]
     VIEW --> FACTORS[Market model + Fama-French 3-factor]
     VIEW --> ML[Classifier: walk-forward CV\n+ jump_ratio feature test]
     DB --> VOL[Volatility/options: jump ratio, GARCH,\nstraddle + iron condor backtests]
+    LIVEDATA[yfinance: live options chains\n+ earnings calendar] --> LIVE[live_iv_check.py\nearnings_screener.py]
+    DB --> LIVE
+    LIVE --> SCHED[Scheduled GitHub Action\n-> screener_history/]
     VIEW --> DASH[Streamlit dashboard]
+    LIVE --> DASH
     VIEW --> NB[analysis.ipynb]
     STATS --> README[This README]
     FACTORS --> README
     ML --> README
     VOL --> README
+    LIVE --> README
 ```
 
 ## Results
