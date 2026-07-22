@@ -46,6 +46,14 @@ def isolate_earnings_move_pct(
     return (earnings_variance ** 0.5) * 100
 
 
+def chain_has_no_contracts(calls: pd.DataFrame, puts: pd.DataFrame) -> bool:
+    # A handful of thin, illiquid names list an expiration with no call or put contracts at
+    # all - not a calculation issue, there's simply nothing to price an ATM straddle from.
+    # Indexing into either DataFrame's first row without checking this first raises an
+    # unhandled IndexError instead of a clean "no usable comparison" skip.
+    return calls.empty or puts.empty
+
+
 def would_clip_to_zero(
     raw_expected_move_pct: float, normal_daily_vol_pct: float, non_event_trading_days: int
 ) -> bool:

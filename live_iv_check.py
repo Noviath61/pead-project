@@ -6,7 +6,7 @@ import pandas as pd
 import yfinance as yf
 from arch import arch_model
 from db import get_engine
-from backtest_math import isolate_earnings_move_pct, would_clip_to_zero
+from backtest_math import chain_has_no_contracts, isolate_earnings_move_pct, would_clip_to_zero
 
 warnings.filterwarnings("ignore", category=UserWarning, module="arch")
 
@@ -174,6 +174,12 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float, engine) -> dict
 
     chain = ticker.option_chain(target_exp.isoformat())
     calls, puts = chain.calls.copy(), chain.puts.copy()
+    # Found by actually running the screener against a wider universe: a handful of thin,
+    # illiquid names list an expiration with no call or put contracts at all. Same "no usable
+    # comparison" skip as no options chain being available at all, rather than an unhandled
+    # IndexError two lines down.
+    if chain_has_no_contracts(calls, puts):
+        return None
     calls["dist"] = (calls["strike"] - spot).abs()
     puts["dist"] = (puts["strike"] - spot).abs()
     atm_call = calls.sort_values("dist").iloc[0]

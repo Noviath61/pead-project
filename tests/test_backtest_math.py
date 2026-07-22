@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest_math import (
     brenner_subrahmanyam_premium_pct,
+    chain_has_no_contracts,
     compound_wealth_index,
     max_drawdown_pct,
     cap_losses,
@@ -143,3 +144,20 @@ def test_would_clip_to_zero_false_when_the_straddle_price_comfortably_covers_nor
     assert would_clip_to_zero(
         raw_expected_move_pct=6.6406, normal_daily_vol_pct=1.8260, non_event_trading_days=7
     ) is False
+
+
+def test_chain_has_no_contracts_true_when_either_side_is_empty():
+    # The exact bug this caught live: a handful of thin, illiquid tickers (added when the
+    # ticker universe was widened) list an expiration with zero call or put contracts, which
+    # crashed with an unhandled IndexError instead of a clean skip.
+    has_calls = pd.DataFrame({"strike": [100.0], "bid": [1.0], "ask": [1.2]})
+    no_contracts = pd.DataFrame({"strike": [], "bid": [], "ask": []})
+    assert chain_has_no_contracts(no_contracts, has_calls) is True
+    assert chain_has_no_contracts(has_calls, no_contracts) is True
+    assert chain_has_no_contracts(no_contracts, no_contracts) is True
+
+
+def test_chain_has_no_contracts_false_when_both_sides_have_rows():
+    has_calls = pd.DataFrame({"strike": [100.0], "bid": [1.0], "ask": [1.2]})
+    has_puts = pd.DataFrame({"strike": [100.0], "bid": [0.9], "ask": [1.1]})
+    assert chain_has_no_contracts(has_calls, has_puts) is False
