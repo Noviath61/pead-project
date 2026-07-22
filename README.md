@@ -568,8 +568,8 @@ Run on 2026-07-21, the day before GOOGL's earnings and a week before HOOD's:
 
 | Ticker | Earnings date | Nearest expiration | Historical typical move | Market-implied move | Richness |
 |---|---|---|---|---|---|
-| GOOGL | 2026-07-22 | 2026-07-22 (1 trading day out) | 3.65% | 5.26% | 1.44x richer |
-| HOOD | 2026-07-29 | 2026-07-31 (8 trading days out) | 9.59% | 4.84% | 0.51x cheaper |
+| GOOGL | 2026-07-22 | 2026-07-24 (3 trading days out) | 7.08% | 5.27% | 0.74x cheaper |
+| HOOD | 2026-07-29 | 2026-07-31 (8 trading days out) | 11.08% | 4.84% | 0.44x cheaper |
 | NVDA | 2026-08-26 | 2026-08-28 (28 trading days out) | - | - | skipped, too far out |
 
 NVDA is the honest part of this: its earnings are over a month away, and no closer weekly
@@ -581,6 +581,42 @@ option price contained, which would make the earnings-specific variance negative
 square root undefined. Fixed by clipping at zero, and by refusing to report a result at all
 once the expiration is far enough out that the whole approach stops being trustworthy, rather
 than quietly returning a number that looked plausible but wasn't.
+
+### Two more bugs found by actually using this for a real trade
+
+Everything above held up fine in testing. It took an actual GOOGL earnings trade, the night
+before, to find the next two problems, and they were bigger than cosmetic.
+
+**Wrong contract, silently.** GOOGL reports after market close. The nearest expiration on or
+after the raw earnings date from yfinance's calendar was, in this case, *the same calendar
+day as the earnings date itself* - a contract that settles at that day's close, hours before
+the after-hours reaction exists. It doesn't capture the move at all; real volume and open
+interest confirmed nobody trades that one for this purpose, they use the next expiration out.
+yfinance's calendar has no pre/post-market flag, so there was no live signal telling the tool
+it had picked the wrong one. Fixed using data this project already had: `earnings_events`
+already records `report_time` for every historical report, and GOOGL has reported post-market
+100% of the time on record, so that history is now used to shift the reaction date forward a
+trading day before picking an expiration, rather than trusting the raw calendar date.
+
+**Wrong historical comparison, less obviously.** The historical baseline only ever measured a
+single day's move (day0), but the live option has however many trading days actually pass
+between the report and expiration - 1 day for some tickers, several for others, and it isn't
+always the same number for the same ticker in different quarters. For GOOGL specifically,
+that gap is now 2 trading days, and the extra day adds real, independent variance, not just
+noise around the first day's number (measured directly: the historical spread nearly triples
+once that second day is included). Fixed by measuring the **cumulative** historical move over
+exactly as many trading days as the live option actually has left, per ticker, per check,
+instead of a fixed single day for everyone. Both fixes came from a `shift_to_reaction_date()`
+and `historical_cumulative_jump_stats()` addition, tested independently the same way as the
+rest of this project's math (see `tests/test_live_iv_check.py`).
+
+The combined effect on this specific case was not small: GOOGL initially showed **1.44x
+richer** than its own history. Properly aligned to the right contract and the right
+historical comparison, it actually shows **0.74x cheaper**. Same ticker, same night, opposite
+conclusion, because the first version was quietly comparing against the wrong thing twice.
+That's the strongest single argument in this whole project for why a live tool that gets used
+for something real matters more than one that only gets unit tested: the real use is what
+found this, not the test suite.
 
 ### Scaling it up: a screener across the whole universe
 
@@ -757,6 +793,11 @@ single-ticker lookup, and reuses `live_iv_check.py`'s comparison function direct
 duplicating it, so the two tools can't drift apart. Both use a live GARCH(1,1) forecast for
 the volatility-netting step, since the project's own research already showed that beats a
 flat rolling window, applied carefully only where doing so doesn't mix inconsistent methods.
+Actually using this tool for a real trade surfaced two further real bugs invisible to testing
+alone (the wrong options contract getting silently selected for after-hours reporters, and a
+historical baseline measured over the wrong number of days) - both fixed, both covered by
+`tests/test_live_iv_check.py`, and honestly, the more interesting evidence for why this kind
+of tool needs real use, not just unit tests, to actually get it right.
 
 **Software practices**: a `pytest` suite that independently recomputes expected values from
 synthetic fixtures and checks the SQL view against them exactly, a second suite of pure unit

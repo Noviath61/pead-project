@@ -19,55 +19,66 @@ MIN_EVENTS_FOR_BASELINE = 5
 # rather than shown as a real number.
 RELIABLE_HORIZON_TRADING_DAYS = 10
 
-HISTORICAL_QUERY = """
-WITH daily_returns AS (
-    SELECT symbol, date,
-        (close - LAG(close) OVER (PARTITION BY symbol ORDER BY date))
-            / LAG(close) OVER (PARTITION BY symbol ORDER BY date) AS daily_return
-    FROM daily_prices WHERE symbol = ANY(%(syms)s)
-),
-vol_features AS (
-    SELECT symbol, date, daily_return,
-        STDDEV_SAMP(daily_return) OVER (PARTITION BY symbol ORDER BY date
-            ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) AS normal_daily_vol
-    FROM daily_returns
-),
-reaction_day AS (
-    SELECT e.symbol, e.reported_date,
-        CASE
-            WHEN e.report_time = 'pre-market' THEN e.reported_date
-            ELSE (
-                SELECT MIN(dp.date) FROM daily_prices dp
-                WHERE dp.symbol = e.symbol AND dp.date > e.reported_date
-            )
-        END AS day0_date
-    FROM earnings_events e
-    WHERE e.symbol = ANY(%(syms)s) AND e.surprise_percentage != 'NaN'
-)
-SELECT r.symbol, v.daily_return AS day0_return, v.normal_daily_vol
-FROM reaction_day r
-JOIN vol_features v ON v.symbol = r.symbol AND v.date = r.day0_date
-WHERE v.normal_daily_vol IS NOT NULL AND v.daily_return IS NOT NULL AND v.normal_daily_vol > 0
-"""
 
+def historical_cumulative_jump_stats(
+    symbol: str, trading_days_held: int, engine
+) -> dict[str, float] | None:
+    # Earlier versions of this tool measured a single day's move (day0) only. Found live,
+    # while actually using this tool for a real trade, that the real risk window for an option
+    # is however many trading days pass between the report and expiration - which is 1 day for
+    # some tickers/expirations and several for others, not always the same. This measures the
+    # CUMULATIVE move from the close right before the report through exactly
+    # `trading_days_held` trading days later (matching however many days the live option
+    # actually has to run), normalized by that many days' worth of ordinary volatility
+    # (variance scales with sqrt(time), same convention used everywhere else in this project).
+    events = pd.read_sql(
+        "SELECT reported_date FROM earnings_events "
+        "WHERE symbol = %(sym)s AND surprise_percentage != 'NaN' ORDER BY reported_date",
+        engine, params={"sym": symbol},
+    )
+    if events.empty:
+        return None
+    events["reported_date"] = pd.to_datetime(events["reported_date"]).astype("datetime64[ns]")
 
-def historical_jump_stats(symbols: list[str], engine) -> dict[str, dict[str, float] | None]:
-    df = pd.read_sql(HISTORICAL_QUERY, engine, params={"syms": symbols})
-    df["jump_ratio"] = df["day0_return"].abs() / df["normal_daily_vol"]
-    df = df[df["jump_ratio"] > 0]
+    prices = pd.read_sql(
+        "SELECT date, close FROM daily_prices WHERE symbol = %(sym)s ORDER BY date",
+        engine, params={"sym": symbol},
+    ).reset_index(drop=True)
+    prices["date"] = pd.to_datetime(prices["date"]).astype("datetime64[ns]")
+    prices["ret"] = prices["close"].pct_change()
+    # Trailing 20-day vol as of just before each date - matches the SQL window convention
+    # (ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) used everywhere else in this project.
+    prices["normal_daily_vol"] = prices["ret"].rolling(20).std().shift(1)
+    prices["row_idx"] = prices.index
 
-    stats: dict[str, dict[str, float] | None] = {}
-    for symbol in symbols:
-        sub = df[df["symbol"] == symbol]
-        if len(sub) < MIN_EVENTS_FOR_BASELINE:
-            stats[symbol] = None
-            continue
-        stats[symbol] = {
-            "n": len(sub),
-            "geo_mean_jump_ratio": float(np.exp(np.log(sub["jump_ratio"]).mean())),
-            "median_jump_ratio": float(sub["jump_ratio"].median()),
-        }
-    return stats
+    anchor = pd.merge_asof(
+        events[["reported_date"]].sort_values("reported_date"), prices,
+        left_on="reported_date", right_on="date", direction="backward",
+    )
+    events = events.sort_values("reported_date").reset_index(drop=True)
+    events["pre_earnings_close"] = anchor["close"].values
+    events["normal_daily_vol"] = anchor["normal_daily_vol"].values
+    events["target_row_idx"] = anchor["row_idx"].values + trading_days_held
+
+    events = events[events["target_row_idx"] < len(prices)].copy()
+    events["target_close"] = prices.loc[events["target_row_idx"].values, "close"].values
+    events["cumulative_pct"] = (
+        (events["target_close"] - events["pre_earnings_close"]) / events["pre_earnings_close"] * 100
+    )
+    events = events.dropna(subset=["cumulative_pct", "normal_daily_vol"])
+    events = events[events["normal_daily_vol"] > 0]
+
+    expected_scale = events["normal_daily_vol"] * 100 * (trading_days_held ** 0.5)
+    events["jump_ratio"] = events["cumulative_pct"].abs() / expected_scale
+    events = events[events["jump_ratio"] > 0]
+
+    if len(events) < MIN_EVENTS_FOR_BASELINE:
+        return None
+    return {
+        "n": len(events),
+        "geo_mean_jump_ratio": float(np.exp(np.log(events["jump_ratio"]).mean())),
+        "median_jump_ratio": float(events["jump_ratio"].median()),
+    }
 
 
 def current_daily_vol_pct(symbol: str, engine) -> float:
@@ -106,7 +117,39 @@ def _mid_price(row: pd.Series) -> float:
     return float(row["lastPrice"])
 
 
-def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
+def shift_to_reaction_date(earnings_date: datetime.date, report_time: str | None) -> datetime.date:
+    # Pure date logic, split out from likely_reaction_date() so it's unit-testable without a
+    # database: given an announcement date and a report-time label, return the date the market
+    # actually reacts on. Pre-market reporters react the same day; everything else (post-market
+    # or unknown) reacts the next trading day - defaulting to post-market is the safer
+    # assumption, since treating a pre-market reporter as post-market just picks one trading
+    # day later than strictly necessary, while the reverse mistake picks a contract that
+    # silently misses the move entirely (the exact bug this fixes, caught live on GOOGL).
+    if report_time == "pre-market":
+        return earnings_date
+    next_day = pd.Timestamp(earnings_date) + pd.tseries.offsets.BDay(1)
+    return next_day.date()
+
+
+def likely_reaction_date(symbol: str, earnings_date: datetime.date, engine) -> datetime.date:
+    # yfinance's calendar gives an earnings DATE but no pre/post-market flag, and that flag is
+    # the difference between "the reaction happens today" and "the reaction happens tomorrow" -
+    # found this the hard way live: GOOGL's calendar just says "2026-07-22," and the nearest
+    # expiration on/after that raw date is ALSO 2026-07-22, but GOOGL reports after that day's
+    # close, so that contract actually settles hours before the reaction exists. This project's
+    # own historical earnings_events table already knows GOOGL has reported post-market every
+    # single quarter on record, so use that (most recent report on file) as the best available
+    # predictor of the upcoming one.
+    row = pd.read_sql(
+        "SELECT report_time FROM earnings_events WHERE symbol = %(sym)s "
+        "ORDER BY reported_date DESC LIMIT 1",
+        engine, params={"sym": symbol},
+    )
+    report_time = row["report_time"].iloc[0] if not row.empty else None
+    return shift_to_reaction_date(earnings_date, report_time)
+
+
+def live_expected_move(symbol: str, normal_daily_vol_pct: float, engine) -> dict | None:
     ticker = yf.Ticker(symbol)
     spot = float(ticker.history(period="1d")["Close"].iloc[-1])
 
@@ -121,9 +164,10 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
     if not upcoming_earnings_dates:
         return None
     earnings_date = min(upcoming_earnings_dates)
+    reaction_date = likely_reaction_date(symbol, earnings_date, engine)
 
     expirations = [datetime.datetime.strptime(e, "%Y-%m-%d").date() for e in ticker.options]
-    candidates = [e for e in expirations if e >= earnings_date]
+    candidates = [e for e in expirations if e >= reaction_date]
     if not candidates:
         return None
     target_exp = min(candidates)
@@ -159,12 +203,18 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
     too_far_out = trading_days_to_expiration > RELIABLE_HORIZON_TRADING_DAYS
     variance_clipped = would_clip_to_zero(raw_expected_move_pct, normal_daily_vol_pct, non_event_trading_days)
 
+    # Trading days from the report itself (not from today) through expiration - the quantity
+    # that matters for finding the historically-comparable holding period, regardless of how
+    # many days away the report happens to be from whenever this check is run.
+    trading_days_report_to_expiration = max(int(np.busday_count(earnings_date, target_exp)), 1)
+
     return {
         "spot": spot,
         "earnings_date": earnings_date,
         "expiration": target_exp,
         "gap_days": (target_exp - earnings_date).days,
         "trading_days_to_expiration": trading_days_to_expiration,
+        "trading_days_report_to_expiration": trading_days_report_to_expiration,
         "raw_expected_move_pct": raw_expected_move_pct,
         "expected_move_pct": earnings_move_pct,
         "too_far_out": too_far_out,
@@ -174,16 +224,10 @@ def live_expected_move(symbol: str, normal_daily_vol_pct: float) -> dict | None:
 
 
 def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list[str]]:
-    hist_stats = historical_jump_stats(symbols, engine)
     rows = []
     messages = []
 
     for symbol in symbols:
-        h = hist_stats.get(symbol)
-        if h is None:
-            messages.append(f"{symbol}: fewer than {MIN_EVENTS_FOR_BASELINE} historical earnings "
-                             f"events in this project's data, skipping (not a reliable baseline)")
-            continue
         vol_now = current_daily_vol_pct(symbol, engine)
         netting_vol = garch_forecast_daily_vol_pct(symbol, engine)
         netting_vol_source = "GARCH(1,1) forecast"
@@ -192,7 +236,7 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
             netting_vol_source = "20-day rolling (GARCH fit failed or insufficient history)"
 
         try:
-            live = live_expected_move(symbol, netting_vol)
+            live = live_expected_move(symbol, netting_vol, engine)
         except Exception as exc:
             messages.append(f"{symbol}: skipped, live data lookup failed ({exc})")
             continue
@@ -222,7 +266,19 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
             )
             continue
 
-        historical_typical_move_pct = h["geo_mean_jump_ratio"] * vol_now
+        # The historical baseline has to be measured over the SAME number of trading days the
+        # live option actually has to run (see historical_cumulative_jump_stats), not a fixed
+        # single day - found this mismatch by actually using this tool for a real trade, where
+        # the option had 2 trading days to run and the old day0-only baseline was quietly
+        # comparing against a 1-day historical distribution instead.
+        held_days = live["trading_days_report_to_expiration"]
+        h = historical_cumulative_jump_stats(symbol, held_days, engine)
+        if h is None:
+            messages.append(f"{symbol}: fewer than {MIN_EVENTS_FOR_BASELINE} historical earnings "
+                             f"events with a clean {held_days}-trading-day baseline, skipping")
+            continue
+
+        historical_typical_move_pct = h["geo_mean_jump_ratio"] * vol_now * (held_days ** 0.5)
         richness_ratio = live["expected_move_pct"] / historical_typical_move_pct
 
         rows.append({
@@ -230,6 +286,7 @@ def build_richness_table(symbols: list[str], engine) -> tuple[pd.DataFrame, list
             "earnings_date": live["earnings_date"],
             "expiration": live["expiration"],
             "trading_days_to_expiration": live["trading_days_to_expiration"],
+            "trading_days_held_historically": held_days,
             "n_historical_events": h["n"],
             "current_20d_daily_vol_pct": round(vol_now, 2),
             "netting_vol_pct": round(netting_vol, 2),

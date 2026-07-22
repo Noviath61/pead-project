@@ -720,12 +720,15 @@ Deliberately not reproduced here with numbers: unlike everything else in this no
 their output is a live snapshot that's already stale by the time anyone else runs it, prices,
 dates, and available expirations all move. These are the one part of this project meant to
 actually be rerun before a real trade rather than read as a fixed result. See `README.md`
-for a sample run and the full methodology, including two real bugs this caught during
-development: a too-far-out expiration made the variance-netting math go negative (fixed by
-refusing to report a number past a 10-trading-day horizon), and later, building the screener,
-a name well within that horizon still clipped to zero because its own recent volatility was
-running hot relative to its near-term options, so proximity to the event alone wasn't
-actually a sufficient safety check.
+for a sample run and the full methodology, including four real bugs this caught: two during
+development (a too-far-out expiration making the variance-netting math go negative, and a
+closer-in name still clipping to zero because its own volatility was running hot relative to
+its near-term options), and two more from actually using it for a real trade the night before
+real GOOGL earnings - the wrong options contract getting silently selected for an after-hours
+reporter, and a historical baseline measured over the wrong number of trading days. Fixing
+those two changed GOOGL's actual conclusion that night from "1.44x richer" to "0.74x cheaper,"
+same ticker, same night, opposite answer - the strongest evidence in this project for why a
+live tool needs real use, not just unit tests, to actually get right.
 """)
 
 md("""\
