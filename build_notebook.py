@@ -63,8 +63,8 @@ print(f"{len(df)} earnings events, {df['symbol'].nunique()} tickers, "
 md("""\
 ## Sample composition
 
-Three market-cap tiers, 20 tickers each, spread across Tech, Financials, Healthcare,
-Consumer, Defense, and Industrials so no single sector dominates any tier.
+Three market-cap tiers, roughly 41-42 tickers each, spread across Tech, Financials,
+Healthcare, Consumer, Defense, and Industrials so no single sector dominates any tier.
 """)
 
 code("""\
@@ -322,13 +322,13 @@ through time: does the account survive, and what does the ride look like along t
 `backtest_equity_curve.py` sequences every trade by its actual Day-0 date and compounds a real
 equity curve instead of averaging.
 
-Worth mentioning honestly: the first version of this used a plain cumulative sum of trade
-returns, which produced a max drawdown of -494%, impossible for real capital without leverage.
-Switching to proper compounding (`(1 + return).cumprod()`) fixed the math, but then the
-corrected curve still hit exactly -100%, a full wipeout, because it modeled one trade betting
-the entire account in sequence with zero diversification. Sizing each trade at a fixed 10% of
-capital instead (a stand-in for a book holding several positions at once) removes that
-artifact and produces a number that's actually readable.
+The first version of this used a plain cumulative sum of trade returns, which produced a max
+drawdown of -494%, impossible for real capital without leverage. Switching to proper
+compounding (`(1 + return).cumprod()`) fixed the math, but then the corrected curve still hit
+exactly -100%, a full wipeout, because it modeled one trade betting the entire account in
+sequence with zero diversification. Sizing each trade at a fixed 10% of capital instead (a
+stand-in for a book holding several positions at once) removes that artifact and produces a
+readable number.
 """)
 
 code("""\
@@ -781,12 +781,13 @@ was picked as companies that are still around and doing well today. That bias is
 part of why even random non-earnings days showed positive drift in the placebo check above.
 
 One more check worth doing: was this test even powerful enough to find a real effect if
-one existed? A standard power calculation says the tier-level tests could reliably detect
-a correlation as small as 0.08-0.10 at 80% power, which is Cohen's threshold for a "small"
-effect, and every observed correlation is well below that. Two sector splits with only a
-handful of tickers (Defense, Industrials) are genuinely underpowered for something that
-small, worth naming honestly, but their observed correlations are still smaller than even
-their own higher detection threshold.
+one existed? A power calculation says the tier-level tests (n=1,877 to 2,257) could reliably
+detect a correlation as small as 0.059-0.065 at 80% power, comfortably under 0.1, Cohen's
+threshold for a "small" effect, and every observed correlation sits below even that tighter
+bar. The two thinnest sector splits, Defense (12 tickers) and Industrials (16), land right at
+the edge (thresholds of 0.116 and 0.102) rather than clearly underpowered the way they were
+before the universe widened, and their observed correlations are still smaller than their own
+detection threshold.
 
 See `sector_analysis.py`, `signal_analysis.py`, `economic_significance.py`,
 `survivorship_check.py`, and `power_analysis.py` for the full output on each of these.
