@@ -58,3 +58,30 @@ jobs:
 
       - name: Run tests
         run: make test
+
+      - name: Load the full historical dataset
+        run: python load_full_dataset.py
+
+      - name: Smoke-test the analysis scripts against real data
+        run: |
+          python data_quality_checks.py
+          python eda.py
+          python tier_analysis.py
+          python sector_analysis.py
+          python signal_analysis.py
+          python model.py
+          python model_v2.py
+          python validity_checks.py
+          python event_study.py
+          python market_model.py
+          python fama_french_model.py
+          python economic_significance.py
+          python survivorship_check.py
+          python power_analysis.py
+          python backtest_equity_curve.py
+          python volatility_risk_premium.py
+          python straddle_backtest.py
+          python iron_condor_backtest.py
+          python garch_volatility_forecast.py
+          python volatility_crush_check.py
+          python bootstrap_confidence_intervals.py

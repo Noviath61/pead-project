@@ -654,9 +654,13 @@ schema in Docker, idempotent ingestion with real error handling (a third-party A
 rate-limit notice with an HTTP 200 instead of an error code, so my original version silently
 treated it as "zero results" instead of failing loudly), data quality checks (including one
 that caught a real bug, see below), lineage tracking, a SQL view built on window functions
-instead of pulling everything into Python, and a standalone SQL showcase (`queries.sql`)
+instead of pulling everything into Python, a standalone SQL showcase (`queries.sql`)
 answering real business questions directly with CTEs, ranking functions, and native
-aggregates, not just through the pandas layer.
+aggregates, not just through the pandas layer, and a committed, compressed export of the full
+275K-row dataset (`export_full_dataset.py` / `load_full_dataset.py`) so cloning this repo gets
+anyone to a fully working database in seconds instead of needing their own API keys and days
+of rate-limited re-ingestion, verified by loading it into a disposable Postgres container and
+confirming every downstream number matched exactly.
 
 **Statistics**: quintile bucketing, cluster-robust regression with an outlier-driven false
 positive diagnosed and fixed along the way, a market-beta validity check, walk-forward
@@ -695,8 +699,10 @@ single-ticker lookup.
 synthetic fixtures and checks the SQL view against them exactly, a second suite of pure unit
 tests (`backtest_math.py`) covering the compounding, loss-capping, and options-pricing math
 shared by the backtest scripts, hand-calculated and asserted independently of the
-implementation, `ruff` linting and `mypy` type checking both wired into CI alongside the test
-suite, a `Makefile` for the common
+implementation, `ruff` linting and `mypy` type checking wired into CI alongside the test suite
+and, now that the full dataset is loadable in seconds, a smoke-test of 20+ analysis scripts
+against real data on every push too, not just the SQL view against a synthetic fixture, a
+`Makefile` for the common
 commands, a Streamlit dashboard covering both the PEAD and the volatility/options tracks, plus
 a live section that pulls real options-chain data on demand (button-gated and cached for 15
 minutes so it doesn't hammer yfinance on every rerun, verified end to end with
@@ -782,7 +788,27 @@ original far-dated case and this closer-in one.
 There's also a `Makefile` (`make lint`, `make test`, `make pipeline`, `make dashboard`) that
 wraps the commands below, if you'd rather use that.
 
-Then, with `FMP_API_KEY` and `ALPHAVANTAGE_API_KEY` set in `.env`:
+**Fast path, no API keys needed:** getting from an empty database to a fully working one the
+"real" way means re-ingesting 20 years of data across 60 tickers through two rate-limited free
+APIs, which took real elapsed time originally (Alpha Vantage's key alone stayed rate-limited
+over 24 hours at one point). That's a genuine reproducibility gap: anyone cloning this repo to
+check the work couldn't actually run it without spending that same time and their own API
+keys. `data_export/` has the full dataset already collected, committed as compressed CSVs:
+
+```bash
+python load_full_dataset.py               # restores daily_prices, earnings_events, ff_factors in seconds
+```
+
+Verified this actually works, not just assumed it: spun up a completely separate, disposable
+Postgres container (never touching the real database, learned that lesson once already, see
+below), applied the schema fresh, ran this loader against it, then reran the full analysis
+pipeline and the test suite against that freshly-loaded database. Every number matched the
+original exactly. This is also what CI now does on every push (see `.github/workflows/ci.yml`),
+so a real code change that broke one of the 20+ analysis scripts against actual data, not just
+the synthetic test fixture, would actually get caught.
+
+To refresh with newer data instead, or from a totally empty database, with `FMP_API_KEY` and
+`ALPHAVANTAGE_API_KEY` set in `.env`:
 
 ```bash
 python ingest.py                          # large-cap tickers
@@ -816,6 +842,7 @@ python bootstrap_confidence_intervals.py  # naive vs. cluster bootstrap CIs on t
 pytest tests/ -v                          # test suite
 streamlit run dashboard.py                # interactive dashboard (live DB)
 python export_snapshot.py                 # refresh the static snapshot for deployment
+python export_full_dataset.py             # regenerate data_export/*.csv.gz after fresh ingestion
 jupyter nbconvert --to notebook --execute --inplace analysis.ipynb  # rebuild the notebook
 ```
 

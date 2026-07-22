@@ -30,4 +30,5 @@ echo "Setup complete."
 if [ ! -f ".env" ]; then
     echo "Next: create a .env file with FMP_API_KEY, ALPHAVANTAGE_API_KEY, and the POSTGRES_* vars (see README)."
 fi
-echo "Then run: python ingest.py && python ingest_yfinance.py"
+echo "Fast path (no API keys, no rate limits): python load_full_dataset.py"
+echo "Fresh data instead: python ingest.py && python ingest_yfinance.py"

@@ -1,7 +1,13 @@
-.PHONY: setup test lint typecheck pipeline queries dashboard notebook live-check screener clean
+.PHONY: setup test lint typecheck pipeline queries dashboard notebook live-check screener load-data export-data clean
 
 setup:
 	./setup.sh
+
+load-data:
+	python load_full_dataset.py
+
+export-data:
+	python export_full_dataset.py
 
 test:
 	pytest tests/ -v
